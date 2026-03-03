@@ -1,8 +1,7 @@
-
-multirun/         # Hydra 多次运行的结果文件夹
+multirun/         
 results/          # 训练结果文件夹（如果不想提交训练结果）
 experiments/       
-
+settings.json
 # 2. 忽略特定文件类型（可选补充）
 *.log            # 所有 .log 后缀的日志文件
 *.tmp            # 所有 .tmp 临时文件
