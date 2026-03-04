@@ -1086,12 +1086,17 @@ class SFCEnv(gym.Env):
             return self._get_obs(), reward, terminated, truncated, info
         # 清理未选中的候选任务 1/22 15：34 ：先不做惩罚了，只清理任务
         num_unpicked = 0
+        unpicked_penalty = 0.0  # 💡3/4 23:04 新增：累计不接单的惩罚
         for ue in self.ues:
             if ue.task_buffer:
                 # 无论这个 UE 是否被 Pick 了，剩下的所有任务在 Slot 结束时都会失效
                 # (如果被 Pick 了，头名任务已经在 _process_sfc_tasks 里处理并 popleft 了)
                 # (如果没被 Pick，那么整个队列都是要被丢弃的)
-                num_unpicked += len(ue.task_buffer)
+                tasks_ignored = len(ue.task_buffer)
+                num_unpicked += tasks_ignored
+
+                # 💡 新增：不接单等同于被丢弃，必须严惩！
+                unpicked_penalty += tasks_ignored * self.config["RWD_DROP"]
                 ue.task_buffer.clear()
         # --- 5. 环境状态更新 (为下一回合生新活) ---
         self.current_time += self.time_slot - self.dt_fly
@@ -1110,7 +1115,9 @@ class SFCEnv(gym.Env):
         sfc_results["failed_count"] += num_unpicked
 
         reward, reward_info = self._calculate_reward(sfc_results, flight_info)
-
+        # 💡 新增：将躺平惩罚算入本步总奖励
+        reward += unpicked_penalty
+        reward_info["r_unpicked_penalty"] = float(unpicked_penalty)  # 方便在TB里看
         # 3. 为下一回合准备候选人 (刷新 self.current_cand_tasks)
         all_active = [
             (i, ue.task_buffer[0]) for i, ue in enumerate(self.ues) if ue.task_buffer
