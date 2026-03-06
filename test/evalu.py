@@ -6,7 +6,6 @@ from stable_baselines3.common.logger import configure
 
 # 导入你的环境和组件
 from core.sfc_env import SFCEnv
-from main import SFCStatsCallback
 
 
 def smart_heuristic_policy(env):
@@ -109,8 +108,12 @@ class HeuristicEvaluator:
         print(f"开始评估启发式策略，总步数: {total_steps}...")
         obs, _ = self.env.reset()
 
-        episode_rewards = []
-        current_episode_reward = 0
+        # 用于存储每个【完整】Episode 最终指标的容器
+        all_ep_success_rates = []
+        all_ep_admission_effs = []
+        all_ep_rewards = []
+        
+        current_episode_reward = 0  
 
         for step in range(1, total_steps + 1):
             # 1. 获取启发式动作
@@ -145,10 +148,13 @@ class HeuristicEvaluator:
                 self.logger.record("sfc/completed_total", self.stats["completed"])
                 self.logger.record("sfc/dropped_admission", self.stats["dropped"])
 
+                all_ep_success_rates.append(success_rate)
+                all_ep_admission_effs.append(admission_eff)
+                all_ep_rewards.append(current_episode_reward)
+
                 # 记录总分
-                episode_rewards.append(current_episode_reward)
                 self.logger.record(
-                    "rollout/ep_rew_mean", np.mean(episode_rewards[-100:])
+                    "rollout/ep_rew_mean", np.mean(all_ep_rewards[-100:])
                 )
 
                 # 强制写入
@@ -161,10 +167,24 @@ class HeuristicEvaluator:
             else:
                 obs = next_obs
 
-            if step % 10000 == 0:
-                print(
-                    f"进度: {step}/{total_steps} | 平均奖励: {np.mean(episode_rewards[-10:] if episode_rewards else 0):.2f}"
-                )
+        # =======================================================
+        # 循环结束：只对【完整】的 Episode 取平均
+        # =======================================================
+        if len(all_ep_rewards) > 0:
+            final_mean_sr = np.mean(all_ep_success_rates)
+            final_mean_ae = np.mean(all_ep_admission_effs)
+            final_mean_rew = np.mean(all_ep_rewards)
+
+            print(f"\n📊 评估总结 (共完成 {len(all_ep_rewards)} 个完整 Episode):")
+            print(f"平均成功率: {final_mean_sr:.2f}% | 平均奖励: {final_mean_rew:.2f}")
+
+            # 写入 TensorBoard 最终对比项
+            self.logger.record("final_avg/success_rate", final_mean_sr)
+            self.logger.record("final_avg/admission_efficiency", final_mean_ae)
+            self.logger.record("final_avg/reward", final_mean_rew)
+            self.logger.dump(total_steps)
+        else:
+            print("⚠️ 警告：设定的 total_steps 太短，未能完成任何一个完整的 Episode！")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
