@@ -216,20 +216,25 @@ def main(cfg: DictConfig):
         # 这里的 exp_dir 就会找到那个：experiments/DIFFUSION/DIFF_level2_0305_1710/
         exp_dir = find_latest_exp(input_str)
     
-    # 定义你想要的子目录路径
+        # 定义你想要的子目录路径
         # experiments/DIFFUSION/xxx/heuristic_run_0306_1400
         import time
         sub_dir_name = f"heuristic_run_{time.strftime('%m%d_%H%M')}"
         heuristic_output_dir = os.path.join(exp_dir, sub_dir_name)
 
-    # 执行启发式逻辑，并传入这个子目录
+        # 执行启发式逻辑，并传入这个子目录
         run_heuristic_with_prev_config(input_str, custom_log_dir=heuristic_output_dir)
         return
 
-
-    # --- A. 核心缝合逻辑：将层级配置转为扁平配置 ---
+    # ==========================================
+    # 获取正常的 Hydra 运行目录 (模式2 和 模式3 共享)
+    # ==========================================
+    hydra_exp_dir = HydraConfig.get().run.dir
+    os.makedirs(hydra_exp_dir, exist_ok=True)
     flat_config = get_flat_config(cfg)
     algo_str = cfg.algo_name.upper()
+
+    # --- A. 核心缝合逻辑：将层级配置转为扁平配置 ---
     if algo_str == "HEURISTIC":
         print(
             f"\n🚀 [独立模式] 仅运行启发式基准测试 (总步数: {cfg.total_timesteps})..."
