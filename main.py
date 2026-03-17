@@ -4,6 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import SAC, PPO
 from stable_baselines3.common.callbacks import BaseCallback
 
+
 # 导入环境
 from core.sfc_env import SFCEnv
 
@@ -17,7 +18,7 @@ from hydra.core.hydra_config import HydraConfig
 # 导入启发式
 from test.evalu import HeuristicEvaluator
 
-os.environ['OMP_NUM_THREADS'] = '1'
+os.environ["OMP_NUM_THREADS"] = "1"
 
 # --- 算法仓库 (Registry) ---
 # 只要在这里注册，main 函数逻辑就永远不用改
@@ -26,6 +27,7 @@ ALGO_REGISTRY = {
     "SAC": SAC,
     "DIFFUSION": DiffusionSACAgent,  # <--- 注册你的新算法
 }
+
 
 def find_latest_exp(algo_name: str, root_dir: str = "experiments") -> str:
     """
@@ -79,13 +81,23 @@ def load_hydra_config(exp_dir: str) -> dict:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"该实验目录下未找到配置文件：{config_path}")
 
-    # 用OmegaConf读取Hydra的yaml（兼容DictConfig格式），转成普通字典
+    # 用OmegaConf读取Hydra的yaml（兼容DictConfig格式）
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = OmegaConf.load(f)
-    return OmegaConf.to_container(cfg, resolve=True)  # resolve=True解析变量插值
+
+    # 转成基础的 Python 容器类型（resolve=True 解析变量插值）
+    container = OmegaConf.to_container(cfg, resolve=True)
+
+    # 强制类型断言：告诉类型检查器这一定是个 dict，并在运行时做安全兜底
+    if not isinstance(container, dict):
+        raise TypeError(
+            f"解析配置失败：期望得到字典(dict)，但实际得到了 {type(container)}。请检查 yaml 文件内容。"
+        )
+
+    return container
 
 
-def get_flat_config(cfg: dict | DictConfig) -> dict:  
+def get_flat_config(cfg: dict | DictConfig) -> dict:
     """
     把Hydra配置转换成原代码需要的扁平配置（和训练代码逻辑一致）
     :param cfg: 从config.yaml读取的原始配置字典/DictConfig
@@ -114,8 +126,7 @@ def get_flat_config(cfg: dict | DictConfig) -> dict:
     return flat_config
 
 
-
-def run_heuristic_with_prev_config(input_str: str, custom_log_dir: str):    
+def run_heuristic_with_prev_config(input_str: str, custom_log_dir: str):
     """复用历史参数运行启发式算法"""
     try:
         # 判断输入是路径还是算法名
@@ -130,13 +141,13 @@ def run_heuristic_with_prev_config(input_str: str, custom_log_dir: str):
 
         # 加载配置并扁平化
         # 1. 加载配置（这里保持从原 exp_dir 读取 .hydra/config.yaml）
-        cfg_old = load_hydra_config(exp_dir) 
-        
+        cfg_old = load_hydra_config(exp_dir)
+
         # 2. 创建你想要的子目录结构
         # 创建：experiments/DIFFUSION/xxx/heuristic_run/heuristic_logs/
         log_dir = os.path.join(custom_log_dir, "heuristic_logs")
         os.makedirs(log_dir, exist_ok=True)
-        
+
         # 3. (可选) 手动归档本次运行的参数，实现你要求的 .hydra 子文件夹
         param_dir = os.path.join(custom_log_dir, ".hydra")
         os.makedirs(param_dir, exist_ok=True)
@@ -210,15 +221,20 @@ class SFCStatsCallback(BaseCallback):
 # 这里的 config_path 和 config_name 必须对应你 conf 文件夹的文件名
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg: DictConfig):
-    
-    if cfg.get("run_heuristic_reuse", False): #说明是想复用rl算法配置来走一遍启发式算法
-        input_str = cfg.get("heuristic_reuse_input") # 这个是需要找到的参数，既可以是算法名（如DIFFUSION/SAC/PPO），也可以是具体的实验路径（如experiments/DIFFUSION/DIFF_level2_0305_1710/）
+
+    if cfg.get(
+        "run_heuristic_reuse", False
+    ):  # 说明是想复用rl算法配置来走一遍启发式算法
+        input_str = cfg.get(
+            "heuristic_reuse_input"
+        )  # 这个是需要找到的参数，既可以是算法名（如DIFFUSION/SAC/PPO），也可以是具体的实验路径（如experiments/DIFFUSION/DIFF_level2_0305_1710/）
         # 这里的 exp_dir 就会找到那个：experiments/DIFFUSION/DIFF_level2_0305_1710/
         exp_dir = find_latest_exp(input_str)
-    
+
         # 定义你想要的子目录路径
         # experiments/DIFFUSION/xxx/heuristic_run_0306_1400
         import time
+
         sub_dir_name = f"heuristic_run_{time.strftime('%m%d_%H%M')}"
         heuristic_output_dir = os.path.join(exp_dir, sub_dir_name)
 
@@ -254,7 +270,7 @@ def main(cfg: DictConfig):
         os.makedirs(heu_log_dir, exist_ok=True)
         evaluator = HeuristicEvaluator(env_heuristic, heu_log_dir)
         evaluator.evaluate(total_steps=cfg.get("heuristic_timesteps", 20000))
-    
+
     # --- 算法初始化时的tensorboard_log路径 ---
     # 原路径：./tb_logs/
     # 新路径：hydra_exp_dir/tb_logs/
@@ -286,6 +302,10 @@ def main(cfg: DictConfig):
                 m_candidates=env.config["M"],  # <--- 改成 env.config
                 grid_res=env.config["GRID_RES"],  # <--- 改成 env.config
             ),
+            # --- 【新增】：直接传给 Policy，用于实例化带 Mask 的 Actor ---
+            n_uavs=env.config["NUM_UAVS"],  # 确定 Mobility 掩码切片位置
+            m_candidates=env.config["M"],  # 确定 Pick 掩码切片位置 [cite: 1]
+            core_features_dim=256,  # 对应特征提取器中语义特征的维度
             share_features_extractor=True,
             T=20,  # Actor 的扩散步数
             net_arch=[256, 256],
@@ -315,6 +335,7 @@ def main(cfg: DictConfig):
     model_save_path = os.path.join(hydra_exp_dir, f"{algo_str}_final_model")
     model.save(model_save_path)
     print(f"🎉 训练完成！模型已保存至：{model_save_path}")
+
 
 # --- 3. 程序入口 ---
 if __name__ == "__main__":

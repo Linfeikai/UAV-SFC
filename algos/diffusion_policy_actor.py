@@ -59,15 +59,17 @@ class _SinusoidalTimestepEmbedding(nn.Module):
     def forward(self, timestep: torch.Tensor) -> torch.Tensor:
         device = timestep.device
         half_dim = self.dim // 2
-        embeddings = math.log(10000) / (half_dim - 1)
-        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
-        embeddings = timestep.float() * embeddings
-        sin_embeddings = torch.sin(embeddings)
-        cos_embeddings = torch.cos(embeddings)
-        final_embeddings = torch.cat((sin_embeddings, cos_embeddings), dim=-1)
+        # 修正：使用更稳健的广播计算
+        freqs = torch.exp(
+            torch.arange(half_dim, device=device)
+            * -(math.log(10000.0) / (half_dim - 1))
+        )
+        # 无论输入是 [B] 还是 [B, 1]，都强制转为 [B, 1] 进行外积
+        args = timestep.float().view(-1, 1) * freqs.view(1, -1)
+        embedding = torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
         if self.dim % 2 == 1:
-            final_embeddings = torch.nn.functional.pad(final_embeddings, (0, 1))
-        return final_embeddings
+            embedding = torch.nn.functional.pad(embedding, (0, 1))
+        return embedding
 
 
 # -------------------------------------------------------------------------------------
@@ -155,10 +157,13 @@ class DiffusionPolicyActor(BasePolicy):
         net_arch: List[int],  # 这里的 net_arch 可以用于 EpsilonNet 的 hidden_dim
         features_extractor: BaseFeaturesExtractor,
         features_dim: int,
+        n_uavs: int,  # 用于构建 Actor 的掩码参数维度
+        m_candidates: int,  # 用于构建 Actor 的掩码参数维度
+        core_features_dim: int,  # 用于构建 Actor 的核心特征维度
         # 扩散模型特定超参数
         T_steps: int = 20,  # 扩散总步数 T_total
-        log_prob_n_steps: int = 20,  # 数值积分步数 T_log_prob
-        log_prob_n_samples: int = 50,  # 蒙特卡洛采样数 N
+        log_prob_n_steps: int = 10,  # 数值积分步数 T_log_prob
+        log_prob_n_samples: int = 10,  # 蒙特卡洛采样数 N
         normalize_images: bool = True,
         entropy_scale: float = 1.0,  # 用于熵代理的缩放系数
         t_min: float = 1e-3,  # 积分区间的下界
@@ -177,6 +182,9 @@ class DiffusionPolicyActor(BasePolicy):
 
         self.action_dim = action_space.shape[0]
         self.features_dim = features_dim
+        self.n_uavs = n_uavs
+        self.m_candidates = m_candidates
+        self.core_features_dim = core_features_dim
         self.T = T_steps
         self.T_log_prob = log_prob_n_steps
         self.N_log_prob = log_prob_n_samples
@@ -187,7 +195,7 @@ class DiffusionPolicyActor(BasePolicy):
 
         hidden_dim = net_arch[0] if net_arch else 256
         self._epsilon_net = _EpsilonNet(
-            state_dim=self.features_dim,
+            state_dim=self.core_features_dim,  # 只把核心特征传给 epsilon_net
             action_dim=self.action_dim,
             hidden_dim=hidden_dim,
         )
@@ -200,8 +208,12 @@ class DiffusionPolicyActor(BasePolicy):
         data = super()._get_constructor_parameters()
         data.update(
             net_arch=self.net_arch,  # <-- 改成直接读取属性，更优雅
-            features_extractor=self.features_extractor,  # <-- 【必须增加】保存提取器实体
             features_dim=self.features_dim,  # <-- 【必须增加】保存特征维度
+            # --- 【新增】确保模型保存/加载后依然能正确执行 Ray Mask ---
+            n_uavs=self.n_uavs,
+            m_candidates=self.m_candidates,
+            core_features_dim=self.core_features_dim,
+            # -------------------------------------------------------
             T_steps=self.T,
             log_prob_n_steps=self.T_log_prob,
             log_prob_n_samples=self.N_log_prob,
@@ -211,133 +223,124 @@ class DiffusionPolicyActor(BasePolicy):
         )
         return data
 
+    def _apply_ray_mask(
+        self, pred_x0: torch.Tensor, features: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        分段非对称射线遮罩 (Segmented Asymmetric Ray Mask)
+        """
+        """修正版：解决 Inplace 梯度破坏与 Clamp Tensor 兼容性"""
+        # 1. 克隆以保护梯度
+        new_x0 = pred_x0.clone()
+        B = new_x0.shape[0]
+
+        # 2. 提取掩码参数 [Batch, n_uavs, 4] -> [L, R, B, T]
+        masks_start = self.core_features_dim
+        mob_masks = features[:, masks_start : masks_start + self.n_uavs * 4].view(
+            B, self.n_uavs, 4
+        )
+        pick_limit = features[
+            :, masks_start + self.n_uavs * 4 : masks_start + self.n_uavs * 4 + 1
+        ]
+
+        # --- A. 向量化处理 Mobility (0-7 维) ---
+        # Step 1: 将 8 维展成 [Batch, n_uavs, 2] -> 分离出 (vx, vy)
+        mobility_part = new_x0[:, : self.n_uavs * 2].reshape(B, self.n_uavs, 2).clone()
+        vx = mobility_part[:, :, 0]
+        vy = mobility_part[:, :, 1]
+
+        # Step 2: 向量化选择缩放系数
+        # X轴：vx >= 0 ? Right(索引1) : Left(索引0)
+        mask_x = torch.where(vx >= 0, mob_masks[:, :, 1], mob_masks[:, :, 0])
+        # Y轴：vy >= 0 ? Top(索引3) : Bottom(索引2)
+        mask_y = torch.where(vy >= 0, mob_masks[:, :, 3], mob_masks[:, :, 2])
+
+        # Step 3: 并行应用缩放
+        # 利用 view 的内存共享机制，直接修改 new_x0 的前 8 位
+        mobility_part[:, :, 0] = vx * mask_x
+        mobility_part[:, :, 1] = vy * mask_y
+
+        # 将修改后的部分刷回 new_x0 (reshape 会保持内存视图一致)
+        new_x0[:, : self.n_uavs * 2] = mobility_part.reshape(B, -1)
+        # --- B. Pick 处理 (8-13 维) ---
+        p_start = 2 * self.n_uavs
+        p_end = p_start + self.m_candidates
+        picks = new_x0[:, p_start:p_end]
+        # 修正：使用 minimum/maximum 解决 Tensor 边界报错
+        picks = torch.maximum(picks, torch.tensor(-1.0, device=picks.device))
+        new_x0[:, p_start:p_end] = torch.minimum(picks, pick_limit)
+
+        return new_x0
+
     def _sample_from_noise(
         self,
         features: torch.Tensor,
         deterministic: bool = False,
-        inference_steps: int = 5,
-    ) -> torch.Tensor:
-        """
-        使用 DDIM 跳步采样加速推理过程。
-        将原本的 self.T (例如20步) 压缩到 inference_steps (例如5步)。
-        """
+        inference_steps: int = 10,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """修正版：统一 DDIM 数学公式与 None 比较逻辑"""
         batch_size = features.shape[0]
-        # 1. 初始纯噪声
         action_t = torch.randn((batch_size, self.action_dim), device=self.device)
-
-        # 2. 生成跳步的时间步序列
-        # 例如 T=20, inference_steps=5 -> 生成 [19, 14, 9, 4, 0]
-        step_indices = torch.linspace(
-            self.T - 1, 0, inference_steps, dtype=torch.long, device=self.device
+        step_indices = (
+            torch.linspace(self.T - 1, 0, inference_steps, device=self.device)
+            .round()
+            .long()
         )
 
-        # 3. DDIM 反向去噪循环
+        last_noise = torch.zeros_like(action_t)
+
         for i in range(len(step_indices)):
             t_curr = step_indices[i]
-            # 找到下一个要跳到的时间步 (更靠近 0)
-            t_prev = (
-                step_indices[i + 1]
-                if i < len(step_indices) - 1
-                else torch.tensor(-1, device=self.device)
-            )
-
-            # 扩展为 batch_size 大小的 tensor
+            t_prev = step_indices[i + 1] if i < len(step_indices) - 1 else None
             t_tensor = torch.full(
                 (batch_size,), int(t_curr.item()), device=self.device, dtype=torch.long
             )
-            # 预测当前的噪声 ε_θ
+
+            core_features = features[:, : self.core_features_dim]
             predicted_noise = self._epsilon_net(
-                features, action_t, t_tensor.unsqueeze(1)
+                core_features, action_t, t_tensor.unsqueeze(1)
             )
 
-            # 取出当前步的 \bar{\alpha}_t
+            if i == len(step_indices) - 1:
+                last_noise = predicted_noise
+
             alpha_bar_t = self.alphas_cumprod[t_curr]
+            alpha_bar_prev = (
+                self.alphas_cumprod[t_prev]
+                if t_prev is not None
+                else torch.tensor(1.0, device=self.device)
+            )
 
-            # 取出前一步的 \bar{\alpha}_{t-1} (如果到了0以下，说明完全没噪声了，置为1.0)
-            if t_prev >= 0:
-                alpha_bar_prev = self.alphas_cumprod[t_prev]
-            else:
-                alpha_bar_prev = torch.tensor(1.0, device=self.device)
-
-            # --- DDIM 核心公式 ---
-            # 步骤 A: 预测完全去噪的 x_0 (Pred x_0)
             pred_x0 = (
                 action_t - torch.sqrt(1.0 - alpha_bar_t) * predicted_noise
             ) / torch.sqrt(alpha_bar_t)
+            pred_x0 = self._apply_ray_mask(pred_x0, features)
 
-            # [Trick] 钳制 pred_x0，防止 RL 训练初期网络输出过大的噪声导致数值崩溃
-            pred_x0 = torch.clamp(pred_x0, -5.0, 5.0)
-
-            # 步骤 B: 计算指向 x_{t-1} 的噪声方向
-            dir_xt_prev = torch.sqrt(1.0 - alpha_bar_prev) * predicted_noise
-
-            # 步骤 C: 组合得到新的 action_t
-            if not deterministic:
-                # RL 中通常直接使用 eta=0 的确定性 DDIM 来极大提升动作稳定性
-                # 如果你想保持微小的随机探索，可以给 action_t 加上一点极小的缩放噪声
-                action_t = torch.sqrt(alpha_bar_prev) * pred_x0 + dir_xt_prev
+            # --- 二、数学实现统一 (DDIM 分支) ---
+            if not deterministic and t_prev is not None:
+                eta = 1.0  # 对应 DDPM 强度
+                var = (
+                    (1.0 - alpha_bar_prev)
+                    / (1.0 - alpha_bar_t)
+                    * (1.0 - alpha_bar_t / alpha_bar_prev)
+                )
+                sigma_t = eta * torch.sqrt(torch.clamp(var, min=1e-8))
             else:
-                action_t = torch.sqrt(alpha_bar_prev) * pred_x0 + dir_xt_prev
+                sigma_t = 0.0
 
-        # 返回最终的无界动作 (稍后会在 forward 里经过 tanh 压缩到 [-1, 1])
-        return action_t
+            # 严格遵循 DDIM 公式：sqrt(1 - alpha - sigma^2)
+            dir_coeff = torch.sqrt(
+                torch.clamp(1.0 - alpha_bar_prev - sigma_t**2, min=0.0)
+            )
+            dir_xt_prev = dir_coeff * predicted_noise
+            noise_term = sigma_t * torch.randn_like(action_t)
+            action_t = torch.sqrt(alpha_bar_prev) * pred_x0 + dir_xt_prev + noise_term
 
-    # def _sample_from_noise(
-    #     self, features: torch.Tensor, deterministic: bool = False
-    # ) -> torch.Tensor:
-    #     """
-    #     一个辅助函数，执行完整的去噪过程并返回最终的无界动作。
-    #     """
-    #     batch_size = features.shape[0]
-    #     action_t = torch.randn((batch_size, self.action_dim), device=self.device)
-
-    #     # DDPM的反向采样过程
-    #     # --- 关键修复：_sample_from_noise() 的反向步 ---
-    #     for t_step in reversed(range(1, self.T + 1)):
-    #         t = torch.full(
-    #             (batch_size,), t_step - 1, device=self.device, dtype=torch.long
-    #         )
-
-    #         predicted_noise = self._epsilon_net(features, action_t, t.unsqueeze(1))
-
-    #         # 取出本步所需的标量（按 batch 广播）
-    #         alpha_bar_t = self.alphas_cumprod.gather(0, t)  # \bar{alpha}_t
-    #         alpha_bar_prev = self.alphas_cumprod_prev.gather(0, t)  # \bar{alpha}_{t-1}
-    #         alpha_t = self.alphas.gather(0, t)  # \alpha_t
-    #         beta_t = self.betas.gather(0, t)  # \beta_t
-
-    #         # 先用 \bar{alpha}_t 还原 x0（这是正确做法）
-    #         pred_x0 = (
-    #             action_t - torch.sqrt(1.0 - alpha_bar_t).view(-1, 1) * predicted_noise
-    #         ) / torch.sqrt(alpha_bar_t).view(-1, 1)
-    #         # pred_x0 = torch.clamp(pred_x0, -1.0, 1.0)
-
-    #         # 正确的 posterior mean 系数
-    #         denom = (1.0 - alpha_bar_t).view(-1, 1)
-    #         coef_x0 = (
-    #             beta_t.view(-1, 1) * torch.sqrt(alpha_bar_prev).view(-1, 1)
-    #         ) / denom
-    #         coef_xt = (
-    #             torch.sqrt(alpha_t).view(-1, 1) * (1.0 - alpha_bar_prev).view(-1, 1)
-    #         ) / denom
-
-    #         posterior_mean = coef_x0 * pred_x0 + coef_xt * action_t
-
-    #         if t_step > 1 and not deterministic:
-    #             posterior_variance = self.posterior_variance.gather(0, t)
-    #             noise = torch.randn_like(action_t)
-    #             action_t = (
-    #                 posterior_mean + torch.sqrt(posterior_variance).view(-1, 1) * noise
-    #             )
-    #         else:
-    #             action_t = posterior_mean
-
-    #     # 返回最终的无界动作(这里是[-1,1]的)
-    #     return action_t
+        return action_t, last_noise
 
     def forward(self, obs: PyTorchObs, deterministic: bool = False) -> torch.Tensor:
         features = self.extract_features(obs, self.features_extractor)
-        unbounded_action = self._sample_from_noise(features, deterministic)
+        unbounded_action, _ = self._sample_from_noise(features, deterministic)
         return torch.tanh(unbounded_action)
 
     def _predict(
@@ -355,8 +358,11 @@ class DiffusionPolicyActor(BasePolicy):
         生成动作并计算其对数概率。
         """
         features = self.extract_features(obs, self.features_extractor)
-        unbounded_action = self._sample_from_noise(features, deterministic=False)
+        unbounded_action, last_noise = self._sample_from_noise(
+            features, deterministic=False
+        )
         policy_action = torch.tanh(unbounded_action)
+        # 2. 使用建议的噪声范数作为代理对数概率
 
         if use_entropy_proxy:
             # 1. 代理熵：用负 L2 范数近似无界空间的对数概率 log p(u)
@@ -399,8 +405,7 @@ class DiffusionPolicyActor(BasePolicy):
         )
 
         # 将连续时间 t (0-1) 映射到离散的 schedule 索引 (0 to T-1)
-        discrete_indices = (time_steps * (self.T - 1)).long()
-
+        discrete_indices = torch.clamp((time_steps * self.T).long(), max=self.T - 1)
         # 获取 alpha_bar_{t_{i-1}} 和 alpha_bar_{t_i}
         # alphas_cumprod 是预先计算好的 alpha_bar schedule
         alpha_hat_t_minus_1 = self.alphas_cumprod[discrete_indices[:-1]]
@@ -437,14 +442,23 @@ class DiffusionPolicyActor(BasePolicy):
             .view(1, 1, self.T_log_prob, 1)
             .expand(B, self.N_log_prob, -1, -1)
         )
-
+        core_features_for_net = features_expanded[
+            :, :, :, : self.core_features_dim
+        ]  # 只取核心特征输入 epsilon_net
         # 预测噪声 ε_φ
         # reshape for batch matmul: [B*N*T, Dim]
         predicted_noise = self._epsilon_net(
-            features_expanded.reshape(-1, self.features_dim),
-            noisy_actions.reshape(-1, A),
-            discrete_t_expanded.reshape(-1, 1),
-        ).reshape(B, self.N_log_prob, self.T_log_prob, A)
+            features_expanded[:, :, :, : self.core_features_dim].reshape(
+                -1, self.core_features_dim
+            ),
+            noisy_actions.reshape(-1, action.shape[1]),
+            discrete_t_expanded.reshape(-1),  # 改为一维
+        ).reshape(
+            features_expanded.shape[0],
+            self.N_log_prob,
+            self.T_log_prob,
+            action.shape[1],
+        )
 
         # 计算平均MSE误差 ε̃φ
         error_mse = torch.sum(

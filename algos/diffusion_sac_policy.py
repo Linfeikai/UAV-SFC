@@ -53,6 +53,9 @@ class DiffusionSACPolicy(BasePolicy):
         # --- Diffusion Actor 特有的参数 ---
         T: int = 5,
         beta_schedule: str = "linear",
+        n_uavs: int = 4,  # 用于构建 Actor 的掩码参数维度
+        m_candidates: int = 6,  # 用于构建 Actor 的掩码参数维度
+        core_features_dim: int = 256,  # 用于构建 Actor 的核心特征维度
         **kwargs: Any,
     ):
         # print(
@@ -88,6 +91,9 @@ class DiffusionSACPolicy(BasePolicy):
         # -- 保存 Diffusion Actor 的参数 --
         self.T = T
         self.beta_schedule = beta_schedule
+        self.n_uavs = n_uavs
+        self.m_candidates = m_candidates
+        self.core_features_dim = core_features_dim
 
         # actor和critic共同的参数
         self.net_args = {
@@ -107,6 +113,9 @@ class DiffusionSACPolicy(BasePolicy):
             {
                 "net_arch": actor_arch,
                 "T_steps": self.T,
+                "n_uavs": self.n_uavs,
+                "m_candidates": self.m_candidates,
+                "core_features_dim": self.core_features_dim,
             }
         )
         self.critic_kwargs.update(

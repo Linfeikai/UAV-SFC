@@ -101,12 +101,11 @@ class SFCEnv(gym.Env):
         # ==========================================
         # 4. 观测空间 (Observation Space)
         # ==========================================
-        # 严格对应你的 _get_obs 顺序进行计算：
+        # --- 原有的物理状态 (62维) ---
         # (1) UAV: N * 9 (6基础 + 2相对充电桩 + 1负载)
         # (2) Grid: grid_res * grid_res * 3 = 27
         # (3) Candidates: M * 5 (x, y, data, cycles, time)
         # (4) Global: 3 (step_norm, charger_x, charger_y)
-        obs_dim = (self.N * 9) + (self.grid_res**2 * 3) + (self.M * 5) + 3
 
         # --- A. UAV Bounds (9维) ---
         # [x, y, vx, vy, batt, crashed, dx, dy, load]
@@ -128,11 +127,10 @@ class SFCEnv(gym.Env):
         global_low = np.array([0, 0, 0], dtype=np.float32)
         global_high = np.array([1, 1, 1], dtype=np.float32)
 
-        # --- E. 拼接 ---
-        low = np.concatenate(
+        low_state = np.concatenate(
             [np.tile(uav_low, self.N), grid_low, np.tile(cand_low, self.M), global_low]
         )
-        high = np.concatenate(
+        high_state = np.concatenate(
             [
                 np.tile(uav_high, self.N),
                 grid_high,
@@ -141,10 +139,27 @@ class SFCEnv(gym.Env):
             ]
         )
 
-        assert low.shape[0] == obs_dim, (
-            f"维度不对！算出来{obs_dim}但实际拼了{low.shape[0]}"
+        # --- B. 动作遮罩空间 (针对 Ray Mask 算法) ---
+        # 1. Mobility Bounds [N, 4]: 对应每架 UAV 的 [左, 右, 下, 上] 缩放比例
+        # 取值 0.0 代表该方向完全封死，1.0 代表全速 [cite: 139]
+        mob_low = np.zeros((self.N, 4), dtype=np.float32)
+        mob_high = np.ones((self.N, 4), dtype=np.float32)
+
+        # 2. Pick Limit [1]: 定义 1D 索引投影的有效上限 [cite: 199]
+        pick_low = np.array([-1.0], dtype=np.float32)
+        pick_high = np.array([1.0], dtype=np.float32)
+
+        self.observation_space = spaces.Dict(
+            {
+                "state": spaces.Box(low=low_state, high=high_state, dtype=np.float32),
+                "mobility_bounds": spaces.Box(
+                    low=0.0, high=1.0, shape=(self.N * 4,), dtype=np.float32
+                ),
+                "pick_limit": spaces.Box(
+                    low=pick_low, high=pick_high, dtype=np.float32
+                ),
+            }
         )
-        self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
     def _create_entities(self):
         """创建 UAV、UE 和 充电桩 实例"""
@@ -1098,7 +1113,7 @@ class SFCEnv(gym.Env):
                 # 💡 新增：不接单等同于被丢弃，必须严惩！
                 unpicked_penalty += tasks_ignored * self.config["RWD_DROP"]
                 ue.task_buffer.clear()
-        # --- 5. 环境状态更新 (为下一回合生新活) ---
+        # --- 5. 环境状态更新 (为下一回合生成新的任务) ---
         self.current_time += self.time_slot - self.dt_fly
         self._update_state()
 
@@ -1332,6 +1347,85 @@ class SFCEnv(gym.Env):
         # 4. 返回初始观测
         return self._get_obs(), {}
 
+    def get_action_mask_params(self):
+        """
+        高稳定性动作遮罩计算 (生产级)
+        集成了：电量、边界、避障、非对称缩放及数值稳定性保护。
+        """
+        # 1. 初始化 4 方向限制：[左, 右, 下, 上] (范围 0.0~1.0)
+        mobility_bounds = np.ones((self.N, 4), dtype=np.float32)
+
+        width = self.config["GROUND_WIDTH"]
+        height = self.config["GROUND_HEIGHT"]
+        max_step_dist = self.config["UAV_MAX_SPEED"] * self.dt_fly
+        safe_dist = self.config["UAV_MIN_SAFE_DISTANCE"]
+        # 建议 5：警戒距离 = 安全距离 + 一个步长的提前量
+        warning_dist = safe_dist + max_step_dist
+
+        for i, uav_i in enumerate(self.uavs):
+            # --- A. 电量约束 (全局缩放) ---
+            battery_ratio = uav_i.e_battery / uav_i.battery_capacity
+            # 线性减速，电量越低，允许的最大速度越慢。
+            speed_limit = np.clip((battery_ratio - 0.05) / 0.15, 0.0, 1.0)
+            mobility_bounds[i, :] *= speed_limit
+
+            # --- B. 边界约束 (非对称，防止越界产生的负值) ---
+            # 建议 2：使用 max(0.0, ...) 彻底杜绝负数 Bound 导致训练崩溃
+            mobility_bounds[i, 0] = min(
+                mobility_bounds[i, 0], max(0.0, uav_i.loc[0] / max_step_dist)
+            )  # Left
+            mobility_bounds[i, 1] = min(
+                mobility_bounds[i, 1], max(0.0, (width - uav_i.loc[0]) / max_step_dist)
+            )  # Right
+            mobility_bounds[i, 2] = min(
+                mobility_bounds[i, 2], max(0.0, uav_i.loc[1] / max_step_dist)
+            )  # Bottom
+            mobility_bounds[i, 3] = min(
+                mobility_bounds[i, 3], max(0.0, (height - uav_i.loc[1]) / max_step_dist)
+            )  # Top
+
+            # --- C. 避障约束 (带优先级的非对称缩放) ---
+            for j, uav_j in enumerate(self.uavs):
+                if i == j or uav_j.is_crashed:
+                    continue
+
+                rel_pos = uav_j.loc - uav_i.loc
+                # 建议 1：防止 dist=0 导致的数值异常
+                dist = max(np.linalg.norm(rel_pos), 1e-6)
+
+                if dist < warning_dist:
+                    # 💡【Trick：优先级避障】如果 i > j，i 让路，j 照飞。防止两机对冲时全部锁死。
+                    if i > j:
+                        safe_move = max(0.0, (dist - safe_dist) / max_step_dist)
+
+                        # 建议 3 & 4：根据相对位置，只限制“靠近”对方的方向
+                        if rel_pos[0] > 0:  # j 在 i 右边
+                            mobility_bounds[i, 1] = min(
+                                mobility_bounds[i, 1], safe_move
+                            )
+                        else:  # j 在 i 左边
+                            mobility_bounds[i, 0] = min(
+                                mobility_bounds[i, 0], safe_move
+                            )
+
+                        if rel_pos[1] > 0:  # j 在 i 上方
+                            mobility_bounds[i, 3] = min(
+                                mobility_bounds[i, 3], safe_move
+                            )
+                        else:  # j 在 i 下方
+                            mobility_bounds[i, 2] = min(
+                                mobility_bounds[i, 2], safe_move
+                            )
+
+        # --- D. Pick 任务选择遮罩 (逻辑验证正确) ---
+        num_tasks = len(self.current_cand_tasks)
+        pick_limit = (2.0 * num_tasks / (self.M + 1)) - 1.0 - 1e-5
+
+        return {
+            "mobility_bounds": mobility_bounds,
+            "pick_limit": np.array([np.clip(pick_limit, -1.0, 1.0)], dtype=np.float32),
+        }
+
     def _get_obs(self):
         obs_list = []
         width = self.config["GROUND_WIDTH"]
@@ -1414,4 +1508,16 @@ class SFCEnv(gym.Env):
             (self.config["MAX_STEPS"] - self.current_step) / self.config["MAX_STEPS"]
         )
         obs_list.extend([charger_loc[0] / width, charger_loc[1] / height])
-        return np.array(obs_list, dtype=np.float32)
+        # --- 返回字典格式 ---
+        state_vector = np.array(obs_list, dtype=np.float32)
+
+        # 获取实时动作遮罩参数
+        mask_params = self.get_action_mask_params()
+
+        return {
+            "state": state_vector,
+            "mobility_bounds": mask_params[
+                "mobility_bounds"
+            ].flatten(),  # 展平为 16 维 (4 UAVs * 4)
+            "pick_limit": mask_params["pick_limit"],  # 已经是 1 维
+        }

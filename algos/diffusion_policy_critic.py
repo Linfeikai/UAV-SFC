@@ -1,5 +1,4 @@
 # =====================================================================================
-# 文件名: continuous_critic.py (原 hybrid_critic.py)
 # 描述: 实现了与 DiffusionPolicyActor 配套的 Critic 网络。
 #       它接收状态和单一的连续动作向量作为输入，来预测Q值。
 # =====================================================================================
@@ -12,6 +11,7 @@ from typing import Tuple, List, Type
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, create_mlp
 from stable_baselines3.common.preprocessing import get_action_dim
 from stable_baselines3.common.policies import BaseModel
+from stable_baselines3.common.type_aliases import PyTorchObs
 
 
 class ContinuousCritic(BaseModel):
@@ -32,7 +32,7 @@ class ContinuousCritic(BaseModel):
 
     def __init__(
         self,
-        observation_space: spaces.Space,
+        observation_space: spaces.Dict,
         action_space: spaces.Box,  # --- 动作空间现在必须是 Box ---
         net_arch: List[int],
         features_extractor: BaseFeaturesExtractor,
@@ -49,31 +49,27 @@ class ContinuousCritic(BaseModel):
             normalize_images=normalize_images,
         )
 
-        # 验证动作空间
-        if not isinstance(action_space, spaces.Box):
-            raise ValueError("ContinuousCritic 要求动作空间为 spaces.Box。")
-
         self.features_dim = features_dim
         self.action_dim = get_action_dim(action_space)
         self.share_features_extractor = share_features_extractor
         self.n_critics = n_critics
-        self.q_networks: List[nn.Module] = []
+        self.q_networks = nn.ModuleList()
         self.net_arch = net_arch
         self.activation_fn = activation_fn
 
-        # --- 移除了对Tuple动作空间和one-hot编码的复杂处理 ---
-        # 现在Q网络的输入维度变得非常简单：状态特征维度 + 动作维度
+        # Q 网络输入维度 = 特征 (273) + 动作 (62) = 335
         q_net_input_dim = self.features_dim + self.action_dim
 
         # 创建指定数量的Critic网络
-        for idx in range(n_critics):
-            q_net_list = create_mlp(q_net_input_dim, 1, net_arch, activation_fn)
-            q_net = nn.Sequential(*q_net_list)
-            self.add_module(f"qf{idx}", q_net)
+
+        for _ in range(n_critics):
+            q_net = nn.Sequential(
+                *create_mlp(q_net_input_dim, 1, net_arch, activation_fn)
+            )
             self.q_networks.append(q_net)
 
     def forward(
-        self, obs: torch.Tensor, action: torch.Tensor
+        self, obs: PyTorchObs, action: torch.Tensor
     ) -> Tuple[torch.Tensor, ...]:
         """
         :param obs: 观察, shape: (batch_size, obs_dim)
@@ -90,7 +86,7 @@ class ContinuousCritic(BaseModel):
         qvalue_input = torch.cat([features, action], dim=1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
-    def q1_forward(self, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    def q1_forward(self, obs: PyTorchObs, action: torch.Tensor) -> torch.Tensor:
         assert self.features_extractor is not None, (
             "Features extractor must be initialized"
         )
@@ -99,7 +95,7 @@ class ContinuousCritic(BaseModel):
         qvalue_input = torch.cat([features, action], dim=1)
         return self.q_networks[0](qvalue_input)
 
-    def q2_forward(self, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    def q2_forward(self, obs: PyTorchObs, action: torch.Tensor) -> torch.Tensor:
         assert self.features_extractor is not None, (
             "Features extractor must be initialized"
         )
@@ -116,7 +112,6 @@ class ContinuousCritic(BaseModel):
         data.update(
             net_arch=self.net_arch,  # ✅ 直接给列表
             n_critics=self.n_critics,
-            share_features_extractor=self.share_features_extractor,
             activation_fn=self.activation_fn,  # ✅ 直接给类
             features_extractor=self.features_extractor,
             features_dim=self.features_dim,
