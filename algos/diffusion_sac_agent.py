@@ -147,6 +147,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.critic_target = self.policy.critic_target
 
     # === NEW: 显式的动作缩放/反缩放，确保策略空间([-1,1])与环境空间一致 ===
+    # 它的核心作用是将环境输出的原始物理动作映射到神经网络喜欢的 [-1, 1] 标准空间。
     def _to_policy_space(self, env_actions: th.Tensor) -> th.Tensor:
         assert isinstance(self.action_space, spaces.Box)
         low = th.as_tensor(self.action_space.low, device=self.device)

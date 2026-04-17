@@ -64,8 +64,10 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
 
         # 像以前一样拆解状态
         uav_obs = state[:, : self.uav_dim]
-        grid_obs = state[:, self.uav_dim : self.uav_dim + self.grid_dim].reshape(
-            -1, 3, self.grid_res, self.grid_res
+        grid_obs = (
+            state[:, self.uav_dim : self.uav_dim + self.grid_dim]
+            .reshape(-1, self.grid_res, self.grid_res, 3)
+            .permute(0, 3, 1, 2)
         )
         cand_obs = state[
             :,
