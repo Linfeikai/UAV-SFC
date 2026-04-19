@@ -1,5 +1,6 @@
 import os
 import hydra
+import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import SAC, PPO
 from stable_baselines3.common.callbacks import BaseCallback
@@ -16,7 +17,7 @@ from algos.diffusion_extractor import SFCFeaturesExtractor
 from hydra.core.hydra_config import HydraConfig
 
 # 导入启发式
-from test.evalu import HeuristicEvaluator
+from test.evalu import HeuristicEvaluator, smart_heuristic_policy
 
 os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -324,6 +325,50 @@ def main(cfg: DictConfig):
         policy_kwargs=policy_kwargs,  # 动态传入图纸
         **algo_params,  # 自动填入 learning_rate, batch_size 等
     )
+    # =======================================================
+    # 🌟 优化后：80/20 混合预热 (启发式 + 随机探索)
+    # =======================================================
+    warmup_steps = cfg.get("warmup_steps", 0)
+    if warmup_steps > 0:
+        # 设定随机采样的比例
+        random_ratio = 0.2
+        print(
+            f"\n🔥 [混合预热开始] 目标: {warmup_steps} 步 | 混合比例: {1 - random_ratio:.0%} 智能规则 + {random_ratio:.0%} 随机探索"
+        )
+
+        obs, _ = env.reset()
+        h_count, r_count = 0, 0  # 计数器，用于最后展示报告
+
+        for i in range(warmup_steps):
+            # 1. 掷骰子决定当前步是使用“专家”还是“小白”
+            if np.random.random() > random_ratio:
+                # 80% 概率使用你的 62 维智能策略 (精细粮)
+                action = smart_heuristic_policy(env)
+                h_count += 1
+            else:
+                # 20% 概率进行随机采样 (粗粮，给 Critic 建立反面教材)
+                action = env.action_space.sample()
+                r_count += 1
+
+            # 2. 与环境交互
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+
+            # 3. 存入 Buffer (SB3 的 DictReplayBuffer 会自动处理 obs 字典)
+            model.replay_buffer.add(obs, next_obs, action, reward, done, [info])
+
+            obs = next_obs
+            if done:
+                obs, _ = env.reset()
+
+            # 每 2000 步打印一次进度，防止挂机焦虑
+            if (i + 1) % 2000 == 0:
+                print(f"   已填入 {i + 1}/{warmup_steps} 步...")
+
+        print(f"✅ 预热完成！")
+        print(f"📊 数据构成: 启发式 {h_count} 步 | 随机 {r_count} 步")
+        print(f"📦 Buffer 当前实际存储量: {model.replay_buffer.size()}")
+    # =======================================================
     # --- E. 训练 ---
     print(f"当前模式: {algo_str} | 总步数: {cfg.total_timesteps}")
     model.learn(

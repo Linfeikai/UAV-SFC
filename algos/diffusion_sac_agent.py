@@ -55,7 +55,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         env: Union[GymEnv, str],
         learning_rate: Union[float, Schedule] = 3e-5,
         buffer_size: int = 1_000_000,
-        learning_starts: int = 10000,
+        learning_starts: int = 0,  # 前提是已经用启发式填充过buffer了
         batch_size: int = 256,
         tau: float = 0.0005,
         gamma: float = 0.99,
