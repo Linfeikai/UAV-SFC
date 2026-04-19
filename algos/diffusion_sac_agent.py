@@ -12,7 +12,7 @@ from typing import Any, ClassVar, Optional, Type, TypeVar, Union, Dict, List, Tu
 
 # 修改后 (推荐):
 from torch.amp.autocast_mode import autocast
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 
 # 导入我们新定义的 Policy
 from .diffusion_sac_policy import DiffusionSACPolicy
@@ -64,13 +64,13 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         # --- 移除了 HybridSAC 特有的、不再需要的参数 ---
         replay_buffer_class: Optional[Type[ReplayBuffer]] = DictReplayBuffer,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
-        ent_coef: Union[str, float] = 0.1,
+        ent_coef: Union[str, float] = 0.0,
         target_update_interval: int = 1,
         # target_entropy: Union[str, float] = "auto",
         # --- 新增的扩散模型特定参数 ---
         qne_k_samples: int = 32,  # QNE中的K值，即"头脑风暴"的样本数
         policy_kwargs: Optional[Dict[str, Any]] = None,
-        qne_temperature: float = 1.0,  # QNE的温度参数，用于控制Softmax的平滑度
+        qne_temperature: float = 0.5,  # QNE的温度参数，用于控制Softmax的平滑度
         max_grad_norm: float = 1.0,  # <-- 确保有这个参数
         # --- 其他标准参数 ---
         tensorboard_log: Optional[str] = None,
@@ -112,7 +112,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.ent_coef_optimizer: Optional[th.optim.Adam] = None
         self.qne_temperature = qne_temperature
         self.max_grad_norm = max_grad_norm
-        self.critic_updates_per_step = 4
+        self.critic_updates_per_step = 4  # 现在没有使用到
         self.qne_entropy_lambda = 0.001
 
         if _init_setup_model:
@@ -120,7 +120,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
 
         # === 在这里添加AMP相关的初始化 ===
         # 仅当设备为CUDA时才创建Scaler
-        self.scaler = GradScaler() if self.device.type == "cuda" else None
+        self.scaler = GradScaler("cuda") if self.device.type == "cuda" else None
 
     def _setup_model(self) -> None:
         # P-TODO: 移除 "use_sde"，因为它不被 DiffusionSACPolicy 支持
@@ -183,34 +183,27 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
             )
             obs = replay_data.observations
 
-            if isinstance(obs, dict):
-                for v in obs.values():
-                    if th.isnan(v).any() or th.isinf(v).any():
-                        raise ValueError("NaN or Inf detected in observations!")
-            else:
-                if th.isnan(obs).any() or th.isinf(obs).any():
-                    raise ValueError("NaN or Inf detected in observations!")
-            if (
-                th.isinf(replay_data.actions).any()
-                or th.isnan(replay_data.actions).any()
-            ):
-                raise ValueError("NaN or Inf detected in actions!")
-            if (
-                th.isinf(replay_data.rewards).any()
-                or th.isnan(replay_data.rewards).any()
-            ):
-                raise ValueError("NaN or Inf detected in rewards!")
+            # if isinstance(obs, dict):
+            #     for v in obs.values():
+            #         if th.isnan(v).any() or th.isinf(v).any():
+            #             raise ValueError("NaN or Inf detected in observations!")
+            # else:
+            #     if th.isnan(obs).any() or th.isinf(obs).any():
+            #         raise ValueError("NaN or Inf detected in observations!")
+            # if (
+            #     th.isinf(replay_data.actions).any()
+            #     or th.isnan(replay_data.actions).any()
+            # ):
+            #     raise ValueError("NaN or Inf detected in actions!")
+            # if (
+            #     th.isinf(replay_data.rewards).any()
+            #     or th.isnan(replay_data.rewards).any()
+            # ):
+            #     raise ValueError("NaN or Inf detected in rewards!")
 
             # 【修改】直接使用 self.ent_coef_tensor，不再需要复杂的if-else
             ent_coef_tensor = self.ent_coef_tensor
 
-            # # 这里是为了得到ent_coef的值，也就是α系数。用来控制熵的权重
-            # if self.log_ent_coef is not None and self.ent_coef_optimizer is not None:
-            #     # 如果是自动调优模式，通过exp()获取当前alpha的值
-            #     ent_coef_tensor = self.log_ent_coef.exp()
-            # else:
-            #     # 如果是固定值模式，直接使用预先创建的张量
-            #     ent_coef_tensor = self.ent_coef_tensor
             with autocast(
                 device_type=self.device.type,
                 dtype=th.float16,
@@ -219,32 +212,55 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                 # 2. --- Critic Loss 计算 (与标准SAC非常相似) ---
                 with th.no_grad():
                     # 使用 Actor 生成下一状态的动作及其对数概率
+                    # 大小：[Batch_Size, Action_Dim]
                     next_actions, next_log_prob = self.actor.action_log_prob(
                         replay_data.next_observations
                     )
-                    # 【新增修复】将策略域的动作转换到环境域
-                    next_actions = self._to_env_space(next_actions)
 
-                    # next_actions = self.actor(
-                    #     replay_data.next_observations, deterministic=False
-                    # )
+                    # -------------------------------------------------------------
+                    # 【核心插入】：Wandb 动作流形与越界监控 (白盒化诊断)
+                    # -------------------------------------------------------------
+                    N_UAV = getattr(self.env, "N", 4) if hasattr(self.env, "N") else 4
+                    K_PICK = getattr(self.env, "K", 2) if hasattr(self.env, "K") else 2
 
-                    # next_actions = self.actor.forward(
-                    # #     replay_data.next_observations, deterministic=True
-                    # # )
-                    # # next_log_prob = th.zeros(next_actions.shape[0], 1, device=self.device)
+                    dim_mob = N_UAV * 2
+                    dim_pick = K_PICK
 
-                    # 在这里，我们需要插入第一个诊断点，检查Actor的输出是否合理
-                    # 【上一轮建议的“行动一”】
-                    self.logger.record(
-                        "debug/next_actions_mean", th.mean(next_actions).item()
-                    )
-                    self.logger.record(
-                        "debug/next_actions_std", th.std(next_actions).item()
-                    )
-                    self.logger.record(
-                        "debug/next_log_prob_mean", th.mean(next_log_prob).item()
-                    )
+                    # 切片分解动作 (注意此时 next_actions 已经是 [-1, 1] 范围)
+                    mob_acts = next_actions[:, :dim_mob]
+                    pick_acts = next_actions[:, dim_mob : dim_mob + dim_pick]
+                    place_acts = next_actions[:, dim_mob + dim_pick :]
+
+                    # 计算越界率
+                    mob_hit_rate = (mob_acts.abs() > 0.95).float().mean().item()
+                    pick_hit_rate = (pick_acts.abs() > 0.95).float().mean().item()
+                    place_hit_rate = (place_acts.abs() > 0.95).float().mean().item()
+
+                    # 💡 直接使用 SB3 的 logger Wandb 会自动把它们抓取上去
+                    self.logger.record("Action_Boundary/Mobility_HitRate", mob_hit_rate)
+                    self.logger.record("Action_Boundary/Pick_HitRate", pick_hit_rate)
+                    self.logger.record("Action_Boundary/Place_HitRate", place_hit_rate)
+
+                    # 2. 直方图属于 Wandb 独有高级对象，必须单独发送
+                    import wandb
+
+                    if wandb.run is not None and self._n_updates % 500 == 0:
+                        wandb.log(
+                            {
+                                "Action_Dist/1_Mobility": wandb.Histogram(
+                                    mob_acts.cpu().numpy()
+                                ),
+                                "Action_Dist/2_Pick": wandb.Histogram(
+                                    pick_acts.cpu().numpy()
+                                ),
+                                "Action_Dist/3_Place": wandb.Histogram(
+                                    place_acts.cpu().numpy()
+                                ),
+                                "global_step": self.num_timesteps,
+                            },
+                            step=self.num_timesteps,
+                        )
+                    # -------------------------------------------------------------
 
                     # 用目标Critic网络评估下一状态-动作对的Q值
                     qf_next_target = th.cat(
@@ -255,15 +271,13 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
 
                     # 在这里，可以诊断目标Q网络给出的分数
                     self.logger.record(
-                        "debug/qf_next_target_mean",
+                        "train/qf_next_target_mean",
                         th.mean(min_qf_next_target).item(),
                     )
 
                     # 加上熵项，计算最终的目标Q值
+                    # 现在是0.0，所以这个项不会对结果产生影响
                     entropy_bonus = ent_coef_tensor * next_log_prob
-                    self.logger.record(
-                        "debug/entropy_bonus_mean", th.mean(entropy_bonus).item()
-                    )
 
                     # 从目标Q值中减去熵项
                     min_qf_next_target -= entropy_bonus
@@ -279,15 +293,14 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                 # 计算当前Critic的Q值
                 qf_values = self.critic(replay_data.observations, replay_data.actions)
                 # 计算 TD 误差
-                # 注意：qf_values 通常会返回多个 Q 值（例如，SAC 中有两个 Critic 网络），
+                # 注意：qf_values 返回两个 Q 值（例如，SAC 中有两个 Critic 网络），
                 # 你需要选择一个来计算 TD 误差，或者计算每个 Q 值的 TD 误差的平均值或范数。
                 # 假设你希望记录第一个 Critic 的 TD 误差，或者所有 Critic 误差的平均值
                 td_error_per_qf = [
                     q - next_q_value for q in qf_values
                 ]  # 这是一个列表，包含每个Q头的TD误差
 
-                # 为了记录，你可以取其平均绝对值、均方根 (RMS) 或L2范数。
-                # 这里我们取所有 Critic 头的 TD 误差的平均绝对值作为示例：
+                # 取所有 Critic 头的 TD 误差的平均绝对值作为示例：
                 # 先将所有批次样本和所有Q头的误差压平
                 td_errors_flat = th.cat([error.flatten() for error in td_error_per_qf])
                 # 计算平均绝对误差
@@ -298,7 +311,6 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
 
                 # 计算Critic的MSE损失
                 critic_loss = 0.5 * sum(F.mse_loss(q, next_q_value) for q in qf_values)
-                # 💡 【新增断言】：明确告诉检查器，算出来的 loss 绝对是个 Tensor
                 assert isinstance(critic_loss, th.Tensor)
             critic_losses.append(float(critic_loss))
 
@@ -307,43 +319,24 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
             # 【修改】使用 scaler.scale() 来缩放loss
             if self.scaler is not None:
                 self.scaler.scale(critic_loss).backward()
-                # 【修改】在 unscale 之后进行梯度裁剪
                 self.scaler.unscale_(self.critic.optimizer)
 
-                critic_grad_norm = 0.0
-                for p in self.critic.parameters():
-                    if p.grad is not None:
-                        param_norm = p.grad.data.norm(2)
-                        critic_grad_norm += param_norm.item() ** 2
-                critic_grad_norm = critic_grad_norm**0.5
-                self.logger.record("train/critic_grad_norm_raw", critic_grad_norm)
-
-                th.nn.utils.clip_grad_norm_(
-                    self.critic.parameters(), self.max_grad_norm
-                )
-                # 【修改】使用 scaler.step() 来更新优化器
-                self.scaler.step(self.critic.optimizer)
-            else:  # 如果不用GPU，则按原样执行
+            else:
                 critic_loss.backward()
+            total_norm = th.nn.utils.clip_grad_norm_(
+                self.critic.parameters(), self.max_grad_norm or 1.0
+            )
+            self.logger.record("train/critic_grad_norm_raw", total_norm.item())
 
-                critic_grad_norm = 0.0
-                for p in self.critic.parameters():
-                    if p.grad is not None:
-                        param_norm = p.grad.data.norm(2)
-                        critic_grad_norm += param_norm.item() ** 2
-                critic_grad_norm = critic_grad_norm**0.5
-                self.logger.record("train/critic_grad_norm_raw", critic_grad_norm)
-
-                th.nn.utils.clip_grad_norm_(
-                    self.critic.parameters(), self.max_grad_norm
-                )
+            if self.scaler is not None:
+                self.scaler.step(self.critic.optimizer)
+            else:
                 self.critic.optimizer.step()
 
             # --- 3. Actor Loss 计算 (QNE核心逻辑) ---
-            # 这里的逻辑完全取代了原始SAC的Actor Loss
             if (self._n_updates + 1) % 2 == 0:
                 # (a) 准备计算Actor Loss所需的数据
-                # 我们需要从replay_data中获取干净的动作`a` (即 `replay_data.actions`)
+                # 从replay_data中获取干净的动作`a` (即 `replay_data.actions`)
                 # 和对应的状态`s` (即 `replay_data.observations`)
                 with autocast(
                     device_type=self.device.type,
@@ -360,7 +353,6 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     )
                     unbounded_clean_actions = th.atanh(policy_actions_from_buffer)
 
-                    # clean_actions_from_buffer = replay_data.actions
                     states_from_buffer = replay_data.observations
 
                     # (b) 随机采样扩散时间步t和真实噪声epsilon
@@ -407,6 +399,19 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     k_candidate_actions = (
                         a_t_expanded - sqrt_one_minus_alpha_bar_exp * k_noises
                     ) / sqrt_alpha_bar_exp  # [B, K, A_dim]
+                    policy_k_candidate_actions = th.tanh(k_candidate_actions)
+                    self.logger.record(
+                        "debug/qne_candidate_actions_mean",
+                        th.mean(policy_k_candidate_actions).item(),
+                    )
+                    self.logger.record(
+                        "debug/qne_candidate_actions_std",
+                        th.std(policy_k_candidate_actions).item(),
+                    )
+
+                    acts_reshaped = policy_k_candidate_actions.reshape(
+                        batch_size * self.qne_k_samples, -1
+                    )
 
                     #    ii. Critic打分
                     if isinstance(states_from_buffer, dict):
@@ -432,23 +437,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                         states_reshaped = states_expanded.reshape(
                             batch_size * self.qne_k_samples, -1
                         )
-                    policy_k_candidate_actions = th.tanh(k_candidate_actions)
-                    env_k_candidate_actions = self._to_env_space(
-                        policy_k_candidate_actions
-                    )
 
-                    self.logger.record(
-                        "debug/qne_candidate_actions_mean",
-                        th.mean(env_k_candidate_actions).item(),
-                    )
-                    self.logger.record(
-                        "debug/qne_candidate_actions_std",
-                        th.std(env_k_candidate_actions).item(),
-                    )
-
-                    acts_reshaped = env_k_candidate_actions.reshape(
-                        batch_size * self.qne_k_samples, -1
-                    )
                     q1 = self.critic.q1_forward(states_reshaped, acts_reshaped)
                     q2 = self.critic.q2_forward(states_reshaped, acts_reshaped)
                     q_values_k = th.min(q1, q2).reshape(
@@ -464,17 +453,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                         self.logger.record("train/qne_q_mean", q_values_k_mean)
                         self.logger.record("train/qne_q_std", q_values_k_std)
 
-                        #    iii. Softmax加权合成Target_Noise
-                    # softmax_weights = F.softmax(
-                    #     q_values_k / ent_coef_tensor.detach(), dim=1
-                    # )  # [B, K, 1]
-                    # q_values_stable = q_values_k - th.max(q_values_k, dim=1, keepdim=True)[0]
-                    # softmax_weights = F.softmax(
-                    #     q_values_stable / self.qne_temperature, dim=1
-                    # )  # [B, K, 1]
-                    # ====================== 这是修正方案 ======================
-                    with th.no_grad():
-                        # 1. 计算当前批次中所有K个候选Q值的均值和标准差
+                        # 计算当前批次中所有K个候选Q值的均值和标准差
                         # [B, K, 1] -> 按 K 维做均值/方差
                         q_mean = q_values_k.mean(dim=1, keepdim=True)
                         q_std = (
@@ -498,17 +477,13 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                         softmax_weights = F.softmax(
                             normalized_q_values / self.qne_temperature, dim=1
                         )
-
-                    # Target_Noise 是对那K个随机噪声的加权和
-                    # 在这里，我们可以诊断Softmax的输出
-                    self.logger.record(
-                        "debug/softmax_weights_std", th.std(softmax_weights).item()
-                    )
-
+                        self.logger.record(
+                            "debug/softmax_weights_std", th.std(softmax_weights).item()
+                        )
+                    # Target_Noise 是对那K个随机噪声的加权和，可以诊断Softmax的输出
                     target_noise = th.sum(
                         softmax_weights * k_noises, dim=1
                     )  # [B, A_dim]
-                    # --- 添加这个新的日志 ---
                     self.logger.record(
                         "debug/target_noise_std", th.std(target_noise).item()
                     )
@@ -548,36 +523,17 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     self.scaler.scale(actor_loss).backward()
                     self.scaler.unscale_(self.actor.optimizer)
 
-                    actor_grad_norm = 0.0
-                    for p in self.actor.parameters():
-                        if p.grad is not None:
-                            param_norm = p.grad.data.norm(2)
-                            actor_grad_norm += param_norm.item() ** 2
-                    actor_grad_norm = actor_grad_norm**0.5
-                    self.logger.record("train/actor_grad_norm_raw", actor_grad_norm)
-
-                    th.nn.utils.clip_grad_norm_(
-                        self.actor.parameters(), self.max_grad_norm
-                    )
-                    # ==========================================================
-
-                    self.scaler.step(self.actor.optimizer)
                 else:
                     actor_loss.backward()
-
-                    actor_grad_norm = 0.0
-                    for p in self.actor.parameters():
-                        if p.grad is not None:
-                            param_norm = p.grad.data.norm(2)
-                            actor_grad_norm += param_norm.item() ** 2
-                    actor_grad_norm = actor_grad_norm**0.5
-                    self.logger.record("train/actor_grad_norm_raw", actor_grad_norm)
-
-                    th.nn.utils.clip_grad_norm_(
-                        self.actor.parameters(), self.max_grad_norm
-                    )
-                    # ==========================================================
-
+                # 梯度裁剪 + 获取真实梯度范数（一行搞定）
+                total_norm = th.nn.utils.clip_grad_norm_(
+                    self.actor.parameters(),
+                    max_norm=self.max_grad_norm or 1.0,  # 防御 None
+                )
+                self.logger.record("train/actor_grad_norm_raw", total_norm.item())
+                if self.scaler is not None:
+                    self.scaler.step(self.actor.optimizer)
+                else:
                     self.actor.optimizer.step()
 
             # 【新增】在所有优化器步骤之后，更新scaler
@@ -604,10 +560,6 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.logger.record("train/critic_loss", np.mean(critic_losses))
         # 【新增】记录 ent_coef (β) 的固定值，方便在实验中追踪
         self.logger.record("train/ent_coef", self.ent_coef_tensor.item())
-
-        # self.logger.record("train/ent_coef", np.mean(ent_coefs))
-        # if len(ent_coef_losses) > 0:
-        #     self.logger.record("train/ent_coef_loss", np.mean(ent_coef_losses))
 
     def learn(self: SelfDiffusionSACAgent, **kwargs) -> SelfDiffusionSACAgent:
         # 重写learn方法，主要是为了类型提示
@@ -636,5 +588,3 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         if self.ent_coef_optimizer is not None:
             new_ent_lr = self.lr_schedule(progress)
             self.ent_coef_optimizer.param_groups[0]["lr"] = new_ent_lr
-
-    # --- 新增方法结束 ---

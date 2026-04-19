@@ -1,3 +1,7 @@
+"""
+📌 在线微调脚本: finetune_rl_all.py
+🔥 目标: 使用 Stable Baselines3 的 SAC 和 PPO 实现在线 RL 微调，基于之前预训练好的 Actor 权重进行训练。"""
+
 import os
 import torch
 import hydra
