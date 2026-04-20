@@ -4,7 +4,9 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import SAC, PPO
 from stable_baselines3.common.callbacks import BaseCallback
-
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+from stable_baselines3.common.utils import set_random_seed
+import wandb
 
 # 导入环境
 from core.sfc_env import SFCEnv
@@ -28,6 +30,17 @@ ALGO_REGISTRY = {
     "SAC": SAC,
     "DIFFUSION": DiffusionSACAgent,  # <--- 注册你的新算法
 }
+
+
+def make_env(rank: int, seed: int, config: dict):
+    def _init():
+        env = SFCEnv(config=config)
+        # 确保每个环境的随机种子不同，避免所有进程跑出一模一样的轨迹
+        env.reset(seed=seed + rank)
+        return env
+
+    set_random_seed(seed)
+    return _init
 
 
 def find_latest_exp(algo_name: str, root_dir: str = "experiments") -> str:
@@ -169,50 +182,66 @@ def run_heuristic_with_prev_config(input_str: str, custom_log_dir: str):
 class SFCStatsCallback(BaseCallback):
     def __init__(self, verbose=0):
         super().__init__(verbose)
-        # 初始化 Episode 累加器
-        self.stats = {
-            "completed": 0,
-            "dropped": 0,
-            "timeout": 0,
-            "unpicked": 0,
-            "available": 0,
-            "picked": 0,
-        }
+        self.n_envs = 0
+        self.per_env_stats = []
+
+    def _on_training_start(self) -> None:
+        """
+        在训练开始时触发。根据并行环境的数量初始化独立的统计器。
+        """
+        # 获取并行环境的总数
+        self.n_envs = self.training_env.num_envs
+        # 为每个环境创建一个独立的累加器字典，防止数据交叉污染
+        self.per_env_stats = [
+            {
+                "completed": 0,
+                "dropped": 0,
+                "timeout": 0,
+                "unpicked": 0,
+                "available": 0,
+                "picked": 0,
+            }
+            for _ in range(self.n_envs)
+        ]
 
     def _on_step(self) -> bool:
-        info = self.locals["infos"][0]
+        # 在并行环境下，infos 和 dones 是长度为 n_envs 的列表
+        infos = self.locals["infos"]
+        dones = self.locals["dones"]
 
-        # 1. 累加基础数据
-        self.stats["completed"] += info.get("completed_count", 0)
-        self.stats["dropped"] += info.get("dropped_count", 0)
-        self.stats["timeout"] += info.get("timeout_count", 0)
-        self.stats["unpicked"] += info.get("unpicked_count", 0)
-        self.stats["available"] += info.get("total_available", 0)
-        self.stats["picked"] += info.get("actually_picked", 0)
+        # 遍历所有并行环境进行统计
+        for i in range(self.n_envs):
+            info = infos[i]
+            env_stats = self.per_env_stats[i]
 
-        # 2. 当 Episode 结束时计算比例并写入 TB
-        if self.locals["dones"][0]:
-            # 计算核心科研指标
-            total_gen = max(1, self.stats["available"])
-            total_pick = max(1, self.stats["picked"])
+            # 1. 累加该环境本步的基础数据
+            env_stats["completed"] += info.get("completed_count", 0)
+            env_stats["dropped"] += info.get("dropped_count", 0)
+            env_stats["timeout"] += info.get("timeout_count", 0)
+            env_stats["unpicked"] += info.get("unpicked_count", 0)
+            env_stats["available"] += info.get("total_available", 0)
+            env_stats["picked"] += info.get("actually_picked", 0)
 
-            # 最终成功率 (成功数 / 总供应)
-            success_rate = (self.stats["completed"] / total_gen) * 100
-            # 准入转化率 (成功数 / 认领数) -> 反应 Place 动作好坏
-            admission_eff = (self.stats["completed"] / total_pick) * 100
-            # 认领率 (认领数 / 总供应) -> 反应 Pick 动作好坏
-            pick_rate = (self.stats["picked"] / total_gen) * 100
+            # 2. 检查第 i 个环境是否完成了一个 Episode
+            if dones[i]:
+                # 计算该环境整个 Episode 的核心指标
+                total_gen = max(1, env_stats["available"])
+                total_pick = max(1, env_stats["picked"])
 
-            # 写入 TensorBoard
-            self.logger.record("sfc/success_rate_pct", success_rate)
-            self.logger.record("sfc/admission_efficiency_pct", admission_eff)
-            self.logger.record("sfc/pick_rate_pct", pick_rate)
-            self.logger.record("sfc/completed_total", self.stats["completed"])
-            self.logger.record("sfc/dropped_admission", self.stats["dropped"])
+                success_rate = (env_stats["completed"] / total_gen) * 100
+                admission_eff = (env_stats["completed"] / total_pick) * 100
+                pick_rate = (env_stats["picked"] / total_gen) * 100
 
-            # 重置累加器
-            for k in self.stats:
-                self.stats[k] = 0
+                # 写入日志 (针对当前完成的特定 Episode)
+                self.logger.record("sfc/success_rate_pct", success_rate)
+                self.logger.record("sfc/admission_efficiency_pct", admission_eff)
+                self.logger.record("sfc/pick_rate_pct", pick_rate)
+                self.logger.record("sfc/completed_total", env_stats["completed"])
+                self.logger.record("sfc/dropped_admission", env_stats["dropped"])
+
+                # 重要：仅重置已完成的第 i 个环境的累加器
+                for k in env_stats:
+                    env_stats[k] = 0
 
         return True
 
@@ -282,8 +311,24 @@ def main(cfg: DictConfig):
     # 将缝合好的扁平字典传给环境的 init
     if algo_str not in ALGO_REGISTRY:
         raise ValueError(f"算法 {algo_str} 还没在 ALGO_REGISTRY 里注册")
+    # 从配置中读取并行数量，建议设为 CPU 核心数的一半或相等
+    n_envs = cfg.get("n_envs", 4)
 
-    env = SFCEnv(config=flat_config)
+    # 创建并行环境
+    env = SubprocVecEnv([make_env(i, cfg.seed, flat_config) for i in range(n_envs)])
+    # 包装一层 Monitor 用来记录原始奖励（SB3 惯例）
+    env = VecMonitor(env)
+    use_wandb = cfg.get("use_wandb", True)
+    if use_wandb:
+        print("\n🌐 正在连接 Weights & Biases...")
+        wandb.init(
+            project="diffusion_rl",  # 你的 Project 名称
+            name=f"{cfg.exp_name}_{algo_str}",  # 实验显示名称 (如: sfc_test_DIFFUSION)
+            dir=hydra_exp_dir,  # 将 wandb 的本地日志存放在 hydra 目录下
+            sync_tensorboard=True,  # 🌟 核心：自动抓取所有 TensorBoard 的日志！
+            config=OmegaConf.to_container(cfg, resolve=True),  # 自动上传所有超参数
+            save_code=True,  # 保存当前运行的代码快照
+        )
 
     # --- C. 初始化算法 ---
     # 注意：tensorboard_log 使用相对路径，Hydra 会自动在 outputs 文件夹下创建它
@@ -299,13 +344,13 @@ def main(cfg: DictConfig):
         policy_kwargs = dict(
             features_extractor_class=SFCFeaturesExtractor,
             features_extractor_kwargs=dict(
-                n_uavs=env.config["NUM_UAVS"],  # <--- 改成 env.config
-                m_candidates=env.config["M"],  # <--- 改成 env.config
-                grid_res=env.config["GRID_RES"],  # <--- 改成 env.config
+                n_uavs=flat_config["NUM_UAVS"],
+                m_candidates=flat_config["M"],
+                grid_res=flat_config["GRID_RES"],
             ),
             # --- 【新增】：直接传给 Policy，用于实例化带 Mask 的 Actor ---
-            n_uavs=env.config["NUM_UAVS"],  # 确定 Mobility 掩码切片位置
-            m_candidates=env.config["M"],  # 确定 Pick 掩码切片位置 [cite: 1]
+            n_uavs=flat_config["NUM_UAVS"],  # 确定 Mobility 掩码切片位置
+            m_candidates=flat_config["M"],  # 确定 Pick 掩码切片位置 [cite: 1]
             core_features_dim=256,  # 对应特征提取器中语义特征的维度
             share_features_extractor=True,
             T=20,  # Actor 的扩散步数
@@ -330,44 +375,49 @@ def main(cfg: DictConfig):
     # =======================================================
     warmup_steps = cfg.get("warmup_steps", 0)
     if warmup_steps > 0:
-        # 设定随机采样的比例
-        random_ratio = 0.2
         print(
-            f"\n🔥 [混合预热开始] 目标: {warmup_steps} 步 | 混合比例: {1 - random_ratio:.0%} 智能规则 + {random_ratio:.0%} 随机探索"
+            f"\n🔥 [预热开始] 目标: {warmup_steps} 步 (正在适配 n_envs={n_envs} 的并行 Buffer)..."
         )
 
-        obs, _ = env.reset()
-        h_count, r_count = 0, 0  # 计数器，用于最后展示报告
+        temp_env = SFCEnv(config=flat_config)
+        obs, _ = temp_env.reset()
 
-        for i in range(warmup_steps):
-            # 1. 掷骰子决定当前步是使用“专家”还是“小白”
-            if np.random.random() > random_ratio:
-                # 80% 概率使用你的 62 维智能策略 (精细粮)
-                action = smart_heuristic_policy(env)
-                h_count += 1
+        # 因为每次 add 会存入 n_envs 条数据，循环次数缩减以保持总数不变
+        for i in range(warmup_steps // n_envs):
+            if np.random.random() > 0.2:
+                action = smart_heuristic_policy(temp_env)
             else:
-                # 20% 概率进行随机采样 (粗粮，给 Critic 建立反面教材)
-                action = env.action_space.sample()
-                r_count += 1
+                action = temp_env.action_space.sample()
 
-            # 2. 与环境交互
-            next_obs, reward, terminated, truncated, info = env.step(action)
+            next_obs, reward, terminated, truncated, info = temp_env.step(action)
             done = terminated or truncated
 
-            # 3. 存入 Buffer (SB3 的 DictReplayBuffer 会自动处理 obs 字典)
-            model.replay_buffer.add(obs, next_obs, action, reward, done, [info])
+            # 🌟 核心修复：将单环境数据“广播”成并行形状 (n_envs, ...)
+            # 1. 字典类型的 obs 需要逐项 tile
+            obs_vec = {k: np.tile(v, (n_envs, 1)) for k, v in obs.items()}
+            next_obs_vec = {k: np.tile(v, (n_envs, 1)) for k, v in next_obs.items()}
+            # 2. 动作、奖励、完成信号也需要堆叠
+            action_vec = np.tile(action, (n_envs, 1))
+            reward_vec = np.tile(reward, (n_envs,))
+            done_vec = np.tile(done, (n_envs,))
+            # 3. info 需要变成长度为 n_envs 的列表
+            info_vec = [info] * n_envs
+
+            # 存入 Buffer，现在形状是 (4, 62), (4, 273) 等，完美匹配！
+            model.replay_buffer.add(
+                obs_vec, next_obs_vec, action_vec, reward_vec, done_vec, info_vec
+            )
 
             obs = next_obs
             if done:
-                obs, _ = env.reset()
+                obs, _ = temp_env.reset()
 
-            # 每 2000 步打印一次进度，防止挂机焦虑
-            if (i + 1) % 2000 == 0:
-                print(f"   已填入 {i + 1}/{warmup_steps} 步...")
+            if (i + 1) % (max(1, (warmup_steps // n_envs) // 5)) == 0:
+                print(f"   已填入约 {(i + 1) * n_envs}/{warmup_steps} 步...")
 
-        print(f"✅ 预热完成！")
-        print(f"📊 数据构成: 启发式 {h_count} 步 | 随机 {r_count} 步")
-        print(f"📦 Buffer 当前实际存储量: {model.replay_buffer.size()}")
+        temp_env.close()
+        print(f"✅ 预热完成！Buffer 当前实际存储条数: {model.replay_buffer.size()}")
+
     # =======================================================
     # --- E. 训练 ---
     print(f"当前模式: {algo_str} | 总步数: {cfg.total_timesteps}")
