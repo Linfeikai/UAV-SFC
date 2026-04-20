@@ -74,15 +74,15 @@ CHG_K_SCALE = 0.5
 # ==========================================
 # 4. 奖励函数权重 (Reward Weights)
 # ==========================================
-RWD_TIMEOUT = -10.0
-RWD_DROP = -8.0
-RWD_COLLISION = -5.0
-RWD_SUCCESS = 20.0  # 提高成功奖励，激励 Agent 克服能耗去干活
-RWD_LINK_BROKEN = -10.0
-RWD_LATENCY_BONUS = 5.0
-RWD_CRASH = -1000.0  # 巨额惩罚，强制学习生存
-RWD_W_ENERGY = 10.0  # 能耗惩罚权重
-RWD_W_CHARGE = 2.0  # 充电激励权重
+RWD_TIMEOUT = -0.5
+RWD_DROP = -0.4
+RWD_COLLISION = -0.25
+RWD_SUCCESS = 1.0  # 提高成功奖励，激励 Agent 克服能耗去干活
+RWD_LINK_BROKEN = -0.5
+RWD_LATENCY_BONUS = 0.25
+RWD_CRASH = -50.0  # 巨额惩罚，强制学习生存
+RWD_W_ENERGY = 0.5  # 能耗惩罚权重
+RWD_W_CHARGE = 0.1  # 充电激励权重
 
 # ==========================================
 # 5. 决策模型参数 (Decision Specs)

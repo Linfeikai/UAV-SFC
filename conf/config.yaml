@@ -6,18 +6,19 @@ defaults:
   - _self_             
 
 # 1. 算法选择 (关键点)
-algo_name: "SAC"  # 之后你可以通过命令行改为 "SAC", "MASKABLE_PPO" 等
+algo_name: "DIFFUSION"  # 之后你可以通过命令行改为 "SAC", "MASKABLE_PPO" 等
 
 # 2. 训练全局参数
 total_timesteps: 500000
 seed: 42
-exp_name: "DIFF_level2"  # 实验名称，用于区分不同实验的结果文件夹
+exp_name: "diffusion_rl_reward!"  # 实验名称，用于区分不同实验的结果文件夹
 # 启发式相关参数
-run_heuristic_baseline: True  # 每次跑 RL 前是否自动跑一轮启发式对比
+run_heuristic_baseline: False  # 每次跑 RL 前是否自动跑一轮启发式对比
 heuristic_timesteps: 20000    # 启发式跑多少步 (无需训练，2万步取均值足够了)
 run_heuristic_reuse: False 
 heuristic_reuse_input: DIFFUSION 
-warmup_steps:20000 # 预热阶段的步数，期间完全使用启发式策略来填充经验回放缓冲区
+warmup_steps: 20000 # 预热阶段的步数，期间完全使用启发式策略来填充经验回放缓冲区
+use_wandb: True  # 是否使用 Weights & Biases 进行实验追踪，默认开启
 
 # 3. 算法特定参数 (分类存放)
 # 这样在 main.py 里可以直接拿 cfg.ppo 或 cfg.sac

@@ -1,7 +1,7 @@
 # conf/reward/balanced.yaml
-SUCCESS: 20.0
-TIMEOUT: -10.0
-DROP: -8.0
-CRASH: -1000.0
-W_ENERGY: 10.0
-W_CHARGE: 2.0
+SUCCESS: 1.0
+TIMEOUT: -0.5
+DROP: -0.4
+CRASH: -50.0
+W_ENERGY: 0.5
+W_CHARGE: 0.1
