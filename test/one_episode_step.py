@@ -2,6 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from stable_baselines3 import SAC
 import sys
+
+sys.path.append(".")  # 把当前文件夹加入 Python 路径
+
+from algos.diffusion_sac_agent import DiffusionSACAgent
+
 import os
 
 # 将当前文件的父目录（即项目根目录）加入到搜索路径中
@@ -32,19 +37,17 @@ def flatten_hydra_cfg(cfg):
 
 
 def run_comprehensive_audit(model_path):
-    # 1. 初始化环境与模型 (强制开启记录模式)
     cfg_path = os.path.join(model_path, ".hydra/config.yaml")
-    model_path = os.path.join(model_path, "SAC_final_model.zip")
+    model_path = os.path.join(model_path, "DIFFUSION_final_model.zip")
 
     # 加载配置与模型
     cfg = OmegaConf.load(cfg_path)
     flat_cfg = flatten_hydra_cfg(cfg)
     # 2. 显式覆盖或添加参数
     flat_cfg.update({"RECORD_DEPLOYMENT": True})
-
     env = SFCEnv(config=flat_cfg)
     try:
-        model = SAC.load(model_path)
+        model = DiffusionSACAgent.load(model_path, map_location="cpu")
         print(f"成功加载模型: {model_path}")
     except Exception as e:
         print(f"模型加载失败: {e}")
@@ -367,6 +370,8 @@ if __name__ == "__main__":
     # run_step_by_step_audit(
     #     "experiments/uav_sfc_run_0123_163238/sac_sfc_model"
     # )  # 替换为你的模型路径")
-    # run_detailed_debug()
-    # run_comprehensive_audit("multirun/2026-02-03/16-11-25/1")  # 替换为你的模型路径")
-    run_final_heuristic_audit(model_dir=None, strategy_name="Heuristic_Balanced")
+    # run_detailed_debug()/root/autodl-tmp/UAV-SFC/experiments/DIFFUSION/change_net_Arch512_0426_1827
+    run_comprehensive_audit(
+        "experiments/DIFFUSION/change_net_Arch512_0426_1827"
+    )  # 替换为你的模型路径")
+    # run_final_heuristic_audit(model_dir=None, strategy_name="Heuristic_Balanced")

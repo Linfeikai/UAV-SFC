@@ -46,13 +46,12 @@ class SFCEnv(gym.Env):
 
         # 定义动作空间 (Box 代表连续空间)
         # 动作包含两部分：移动 + 部署
-        # 为了方便 Diffusion，通常把它们展平成一个大向量，或者作为 Dict
-        # 这里假设展平成一个大的一维向量，进环境再 reshape
-
+        # 1. 修改 dim_place 的计算方式
         dim_mobility = self.N * 2
-        dim_pick = self.K
-        dim_place = self.K * self.L * 2  # 注意这里乘了 2
-        total_dim = dim_mobility + dim_pick + dim_place
+        # 原来是 self.K * self.L * 2 (x, y)
+        # 现在是每个 VNF 对应 N 架 UAV 的评分
+        dim_place = self.K * self.L * self.N
+        total_dim = dim_mobility + dim_place
 
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(total_dim,), dtype=np.float32
@@ -145,18 +144,11 @@ class SFCEnv(gym.Env):
         mob_low = np.zeros((self.N, 4), dtype=np.float32)
         mob_high = np.ones((self.N, 4), dtype=np.float32)
 
-        # 2. Pick Limit [1]: 定义 1D 索引投影的有效上限 [cite: 199]
-        pick_low = np.array([-1.0], dtype=np.float32)
-        pick_high = np.array([1.0], dtype=np.float32)
-
         self.observation_space = spaces.Dict(
             {
                 "state": spaces.Box(low=low_state, high=high_state, dtype=np.float32),
                 "mobility_bounds": spaces.Box(
                     low=0.0, high=1.0, shape=(self.N * 4,), dtype=np.float32
-                ),
-                "pick_limit": spaces.Box(
-                    low=pick_low, high=pick_high, dtype=np.float32
                 ),
             }
         )
@@ -1010,14 +1002,10 @@ class SFCEnv(gym.Env):
         # 在执行动作前，统计目前 Buffer 里到底有多少活等着被处理
         total_tasks_on_table = sum(len(ue.task_buffer) for ue in self.ues)
 
-        # --- 1. 动作切片 (根据 62 维重新分配) ---
-        # Mobility: 0~7 (8维)
+        # --- 1. 动作切片 (104 维纯净版) ---
         raw_mobility = action[: N * 2]
-        # Pick: 8~13 (6维)
-        raw_pick = action[N * 2 : N * 2 + K]
-        # Place Intent: 14~61 (48维)
-        raw_place_intent = action[N * 2 + K :].reshape(K, L, X)
 
+        raw_place_logits = action[N * 2 :].reshape(K, L, N)
         # 2. 拆解动作并执行移动
         mobility_act = raw_mobility.reshape(self.N, 2)
         # 执行完这个函数后，uav的位置和能量都更新好了
@@ -1034,55 +1022,63 @@ class SFCEnv(gym.Env):
 
             return self._get_obs(), reward, terminated, truncated, info
 
-        # --- 3. 任务筛选 (Pick) ---
-        # 注意：这里依然保留了 floor，因为任务池 M 是离散的
-        pick_indices = np.floor((raw_pick + 1) / 2 * (M + 1)).astype(np.int32)
-        pick_indices = np.clip(pick_indices, 0, M)
-        # --- 4. 意图解码部署 (Place Intent -> UAV ID) ---
-        # 我们将 K*L*X 的意图矩阵转化为环境需要的 K*L 索引矩阵
-        place_matrix = np.zeros((K, L), dtype=np.int32)
-
-        width = self.config["GROUND_WIDTH"]
-        height = self.config["GROUND_HEIGHT"]
-
-        for k in range(K):
-            for l in range(L):
-                # 将 [-1, 1] 映射到地图坐标 [0, 500]
-                intent_x = (raw_place_intent[k, l, 0] + 1) / 2 * width
-                intent_y = (raw_place_intent[k, l, 1] + 1) / 2 * height
-                intent_loc = np.array([intent_x, intent_y])
-
-                # 寻找距离该意图坐标最近的 UAV
-                best_uav_id = 0
-                min_dist = float("inf")
-                for uav in self.uavs:
-                    if uav.is_crashed:
-                        continue
-                    dist = np.linalg.norm(uav.loc - intent_loc)
-                    if dist < min_dist:
-                        min_dist = dist
-                        best_uav_id = uav.node_id
-
-                place_matrix[k, l] = best_uav_id
-
+        # ==========================================================
+        # --- 3. 终极融合解码器 (Greedy Pick + Smart Place) ---
+        # ==========================================================
         chosen_tasks_with_map = []
-        picked_ue_ids = set()  # 用于去重，防止 Agent 重复选同一个候选人
-        # 注意：这里依然保留了 floor，因为任务池 M 是离散的
-        pick_indices = np.floor((raw_pick + 1) / 2 * (M + 1)).astype(np.int32)
-        pick_indices = np.clip(pick_indices, 0, M)
-        for k in range(K):
-            cand_idx = pick_indices[k]
-            # 如果索引在 [0, M-1] 范围内，说明 Pick 了一个真实候选人
-            if 0 <= cand_idx < len(self.current_cand_tasks):
-                ue_id, sfc = self.current_cand_tasks[cand_idx]
+        picked_ue_ids = set()
 
-                if ue_id not in picked_ue_ids:
-                    # 获取该任务对应的 UAV 映射方案 (取 place_matrix 的第 k 行)
-                    vnf_uav_map = self._trim_mapping(sfc, place_matrix[k])
-                    chosen_tasks_with_map.append((ue_id, sfc, vnf_uav_map))
-                    picked_ue_ids.add(ue_id)
+        # 1. 预计算本 Step 各架无人机的真实可用算力池
+        dt_compute = self.time_slot - self.dt_fly
+        rem_caps = np.array([u.cpu_freq * dt_compute for u in self.uavs])
 
-        num_picked = len(chosen_tasks_with_map)  # Agent 真正“领走”的任务
+        # 2. 确定本回合能接的真实数量 (最多接 K 个，或者候选池里有多少接多少)
+        num_avail = len(self.current_cand_tasks)
+        actual_pick_count = min(K, num_avail)
+
+        # 3. 贪心接单：直接按紧急程度顺序，提取前 actual_pick_count 个任务
+        for k in range(actual_pick_count):
+            ue_id, sfc = self.current_cand_tasks[k]
+
+            if ue_id not in picked_ue_ids:
+                # vnf_uav_map 用于记录当前 SFC 的 4 个 VNF 分别放在哪架 UAV 上
+                vnf_uav_map = []
+
+                # 遍历该任务链上的每一个 VNF
+                for l in range(len(sfc.vnf_chain)):
+                    vnf = sfc.vnf_chain[l]
+                    req_cycles = vnf.required_cycles
+
+                    # 提取网络为 [第 k 个任务] 的 [第 l 个 VNF] 给出的打分
+                    logits = raw_place_logits[k, l].copy()
+
+                    # 强行抹杀已经坠毁的 UAV，让它不参与排序
+                    for u_id, uav in enumerate(self.uavs):
+                        if uav.is_crashed:
+                            logits[u_id] = -1e9
+
+                    # 按照得分从高到低给 UAV 排序 (网络偏好排名)
+                    sorted_uavs = np.argsort(logits)[::-1]
+
+                    # 智能兜底：顺着网络的心意，寻找第一个算力还能塞得下的 UAV
+                    assigned_uav = sorted_uavs[0]  # 默认给最高分，即使超载也硬塞
+                    for u_id in sorted_uavs:
+                        if rem_caps[u_id] >= req_cycles:
+                            assigned_uav = u_id
+                            break  # 找到了有余力的！
+
+                    # 记录分配结果，并实时扣除该 UAV 的剩余可用算力
+                    vnf_uav_map.append(assigned_uav)
+                    rem_caps[assigned_uav] -= req_cycles
+
+                # 将该任务和它的完整分配方案打包
+                chosen_tasks_with_map.append(
+                    (ue_id, sfc, np.array(vnf_uav_map, dtype=np.int32))
+                )
+                picked_ue_ids.add(ue_id)
+
+        num_picked = len(chosen_tasks_with_map)
+        # ==========================================================
 
         # 5.进行充电桩判定 根据本time 1s后飞行到的位置和充电桩位置判定谁能充电
         charge_info = self._handle_charging()
@@ -1417,13 +1413,8 @@ class SFCEnv(gym.Env):
                                 mobility_bounds[i, 2], safe_move
                             )
 
-        # --- D. Pick 任务选择遮罩 (逻辑验证正确) ---
-        num_tasks = len(self.current_cand_tasks)
-        pick_limit = (2.0 * num_tasks / (self.M + 1)) - 1.0 - 1e-5
-
         return {
             "mobility_bounds": mobility_bounds,
-            "pick_limit": np.array([np.clip(pick_limit, -1.0, 1.0)], dtype=np.float32),
         }
 
     def _get_obs(self):
@@ -1519,5 +1510,4 @@ class SFCEnv(gym.Env):
             "mobility_bounds": mask_params[
                 "mobility_bounds"
             ].flatten(),  # 展平为 16 维 (4 UAVs * 4)
-            "pick_limit": mask_params["pick_limit"],  # 已经是 1 维
         }

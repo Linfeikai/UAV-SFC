@@ -13,9 +13,7 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         m_candidates: int = 6,
         grid_res: int = 3,
     ):
-        # 注意：这里我们返回的总维度 = 核心特征(256) + 掩码参数(N*4 + 1)
-        # 这是为了确保 Actor 能拿到原始的物理约束
-        self.mask_dim = (n_uavs * 4) + 1
+        self.mask_dim = n_uavs * 4
         total_output_dim = features_dim + self.mask_dim
         assert isinstance(observation_space, gym.spaces.Dict), "必须使用 Dict 观察空间"
         assert "state" in observation_space.spaces
@@ -28,7 +26,6 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         self.m_candidates = m_candidates
         self.grid_res = grid_res
 
-        # --- 原始状态 96 维的切片节点 ---
         self.uav_dim = self.n_uavs * 9
         self.grid_dim = (self.grid_res**2) * 3
         self.cand_dim = self.m_candidates * 5
@@ -59,7 +56,7 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         """
         observations 现在是一个字典，包含 'state', 'mobility_bounds', 'pick_limit'
         """
-        # --- 1. 提取物理状态向量 (62维) ---
+        # --- 1. 提取物理状态向量 (96维) ---
         state = observations["state"]
 
         # 像以前一样拆解状态
@@ -88,7 +85,6 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         # --- 4. 【关键】拼接原始掩码参数 ---
         # 展平 mobility_bounds [Batch, N, 4] -> [Batch, N*4]
         mob_masks = observations["mobility_bounds"].reshape(core_features.size(0), -1)
-        pick_mask = observations["pick_limit"]  # [Batch, 1]
 
-        # 最终输出 = [256 维特征 | 16 维移动边界 | 1 维 Pick 边界]
-        return torch.cat([core_features, mob_masks, pick_mask], dim=1)
+        # 最终输出 = [256 维核心特征 | 16 维移动边界]
+        return torch.cat([core_features, mob_masks], dim=1)

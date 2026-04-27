@@ -10,8 +10,8 @@ from core.sfc_env import SFCEnv
 
 def smart_heuristic_policy(env):
     """
-    适配 62 维语义意图空间的智能规则策略
-    维度分布: 8 (移动) + 6 (挑选) + 48 (部署意图: 6任务 * 4VNF * 2坐标)
+    适配 110 维离散分类空间的智能规则策略
+    维度分布: 8 (移动) + 6 (挑选) + 96 (部署Logits: 6任务 * 4VNF * 4UAV得分)
     """
     K, L, M, N = env.K, env.L, env.M, env.N
     width = env.config["GROUND_WIDTH"]
@@ -31,17 +31,8 @@ def smart_heuristic_policy(env):
         dist = np.linalg.norm(diff) + 1e-9
         mobility_actions.extend(diff / dist)
 
-    # --- B. 选人逻辑 (保持原样，输出 6 维) ---
-    pick_actions = []
-    for k in range(K):
-        if k < len(env.current_cand_tasks):
-            raw_pick = (k / (M + 1)) * 2 - 1 + 0.001
-        else:
-            raw_pick = (M / (M + 1)) * 2 - 1 + 0.001
-        pick_actions.append(raw_pick)
-
-    # --- C. 部署逻辑 (核心修改：输出 48 维坐标意图) ---
-    place_intent_actions = []
+    # --- C. 部署逻辑 (核心修改：输出 96 维 Logits 偏好打分) ---
+    place_logits_actions = []
     uav_capacity_used = np.zeros(N)
     dt_compute = env.time_slot - env.dt_fly
     uav_caps = np.array([u.cpu_freq * dt_compute for u in env.uavs])
@@ -69,20 +60,23 @@ def smart_heuristic_policy(env):
 
             uav_capacity_used[best_uav_idx] += sfc.total_cycles
 
-            # --- 关键：将该 UAV 的物理位置映射到 [-1, 1] 意图空间 ---
-            target_uav = env.uavs[best_uav_idx]
-            norm_x = (target_uav.loc[0] / width) * 2 - 1
-            norm_y = (target_uav.loc[1] / height) * 2 - 1
+            # --- 关键修改：不再算坐标，直接给指定的 UAV 打最高分 ---
+            # 初始化对 4 架 UAV 的打分，默认都给极低分 -1.0
+            vnf_logits = [-1.0] * N
+            # 给选中的最佳 UAV 打满分 1.0
+            vnf_logits[best_uav_idx] = 1.0
 
-            # 为该任务的 L=4 个 VNF 生成同样的意图坐标 (共 4*2=8 个值)
+            # 为该任务的 L=4 个 VNF 生成同样的打分数组 (共 4*4=16 个值)
             for _ in range(L):
-                place_intent_actions.extend([norm_x, norm_y])
+                place_logits_actions.extend(vnf_logits)
         else:
-            # 填充位：如果不选任务，输出 [0, 0] 坐标意图
-            place_intent_actions.extend([0.0, 0.0] * L)
+            # 填充位：如果不选任务，给所有 UAV 都打低分
+            pad_logits = [-1.0] * N
+            for _ in range(L):
+                place_logits_actions.extend(pad_logits)
 
-    # 最终返回 8 + 6 + 48 = 62 维向量
-    return np.concatenate([mobility_actions, pick_actions, place_intent_actions])
+    # 最终返回 8 + 6 + 96 = 110 维向量
+    return np.concatenate([mobility_actions, place_logits_actions])
 
 
 class HeuristicEvaluator:
@@ -112,8 +106,8 @@ class HeuristicEvaluator:
         all_ep_success_rates = []
         all_ep_admission_effs = []
         all_ep_rewards = []
-        
-        current_episode_reward = 0  
+
+        current_episode_reward = 0
 
         for step in range(1, total_steps + 1):
             # 1. 获取启发式动作
