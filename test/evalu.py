@@ -85,9 +85,7 @@ def smart_heuristic_policy(env):
                 aff = env._vnf_affinity(best, vnf)
                 used[best] += vnf.required_cycles / max(aff, 1e-9)
                 tx = env.uavs[best].loc
-                place_intent_actions.extend(
-                    [(tx[0] / W) * 2 - 1, (tx[1] / H) * 2 - 1]
-                )
+                place_intent_actions.extend([(tx[0] / W) * 2 - 1, (tx[1] / H) * 2 - 1])
             else:
                 place_intent_actions.extend([0.0, 0.0])
 
@@ -123,8 +121,8 @@ class HeuristicEvaluator:
         all_ep_success_rates = []
         all_ep_admission_effs = []
         all_ep_rewards = []
-        
-        current_episode_reward = 0  
+
+        current_episode_reward = 0
 
         for step in range(1, total_steps + 1):
             # 1. 获取启发式动作

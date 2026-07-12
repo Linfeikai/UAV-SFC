@@ -53,13 +53,12 @@ class SFCEnv(gym.Env):
 
         # 定义动作空间 (Box 代表连续空间)
         # 动作包含两部分：移动 + 部署
-        # 为了方便 Diffusion，通常把它们展平成一个大向量，或者作为 Dict
-        # 这里假设展平成一个大的一维向量，进环境再 reshape
-
+        # 1. 修改 dim_place 的计算方式
         dim_mobility = self.N * 2
-        dim_pick = self.K
-        dim_place = self.K * self.L * 2  # 注意这里乘了 2
-        total_dim = dim_mobility + dim_pick + dim_place
+        # 原来是 self.K * self.L * 2 (x, y)
+        # 现在是每个 VNF 对应 N 架 UAV 的评分
+        dim_place = self.K * self.L * self.N
+        total_dim = dim_mobility + dim_place
 
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(total_dim,), dtype=np.float32
@@ -152,18 +151,11 @@ class SFCEnv(gym.Env):
         mob_low = np.zeros((self.N, 4), dtype=np.float32)
         mob_high = np.ones((self.N, 4), dtype=np.float32)
 
-        # 2. Pick Limit [1]: 定义 1D 索引投影的有效上限 [cite: 199]
-        pick_low = np.array([-1.0], dtype=np.float32)
-        pick_high = np.array([1.0], dtype=np.float32)
-
         self.observation_space = spaces.Dict(
             {
                 "state": spaces.Box(low=low_state, high=high_state, dtype=np.float32),
                 "mobility_bounds": spaces.Box(
                     low=0.0, high=1.0, shape=(self.N * 4,), dtype=np.float32
-                ),
-                "pick_limit": spaces.Box(
-                    low=pick_low, high=pick_high, dtype=np.float32
                 ),
             }
         )
@@ -751,9 +743,7 @@ class SFCEnv(gym.Env):
             # A. 计算计算能耗 (E = P * t)
             # 实际忙碌时间 = 总周期 / 频率，但一个 slot 内 UAV 最多只能计算
             # dt_compute 秒（过载时任务变慢而非无限延长机时），故钳制上限。
-            busy_time = min(
-                uav_total_cycles[uav_id] / uav.cpu_freq, dt_compute
-            )
+            busy_time = min(uav_total_cycles[uav_id] / uav.cpu_freq, dt_compute)
             e_comp = FULL_LOAD_POWER * busy_time
             uav_compute_energy[uav_id] = e_comp
 
@@ -1076,14 +1066,10 @@ class SFCEnv(gym.Env):
         # 在执行动作前，统计目前 Buffer 里到底有多少活等着被处理
         total_tasks_on_table = sum(len(ue.task_buffer) for ue in self.ues)
 
-        # --- 1. 动作切片 (根据 62 维重新分配) ---
-        # Mobility: 0~7 (8维)
+        # --- 1. 动作切片 (104 维纯净版) ---
         raw_mobility = action[: N * 2]
-        # Pick: 8~13 (6维)
-        raw_pick = action[N * 2 : N * 2 + K]
-        # Place Intent: 14~61 (48维)
-        raw_place_intent = action[N * 2 + K :].reshape(K, L, X)
 
+        raw_place_logits = action[N * 2 :].reshape(K, L, N)
         # 2. 拆解动作并执行移动
         mobility_act = raw_mobility.reshape(self.N, 2)
         # 执行完这个函数后，uav的位置和能量都更新好了
@@ -1145,7 +1131,8 @@ class SFCEnv(gym.Env):
                     chosen_tasks_with_map.append((ue_id, sfc, vnf_uav_map))
                     picked_ue_ids.add(ue_id)
 
-        num_picked = len(chosen_tasks_with_map)  # Agent 真正“领走”的任务
+        num_picked = len(chosen_tasks_with_map)
+        # ==========================================================
 
         # 5.进行充电桩判定 根据本time 1s后飞行到的位置和充电桩位置判定谁能充电
         charge_info = self._handle_charging()
@@ -1495,13 +1482,8 @@ class SFCEnv(gym.Env):
                                 mobility_bounds[i, 2], safe_move
                             )
 
-        # --- D. Pick 任务选择遮罩 (逻辑验证正确) ---
-        num_tasks = len(self.current_cand_tasks)
-        pick_limit = (2.0 * num_tasks / (self.M + 1)) - 1.0 - 1e-5
-
         return {
             "mobility_bounds": mobility_bounds,
-            "pick_limit": np.array([np.clip(pick_limit, -1.0, 1.0)], dtype=np.float32),
         }
 
     def _get_obs(self):
@@ -1602,5 +1584,4 @@ class SFCEnv(gym.Env):
             "mobility_bounds": mask_params[
                 "mobility_bounds"
             ].flatten(),  # 展平为 16 维 (4 UAVs * 4)
-            "pick_limit": mask_params["pick_limit"],  # 已经是 1 维
         }
