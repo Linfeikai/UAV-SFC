@@ -3,6 +3,11 @@ import matplotlib.pyplot as plt
 from stable_baselines3 import SAC
 import sys
 import os
+import sys
+
+sys.path.append(".")  # 把当前文件夹加入 Python 路径
+from algos.diffusion_sac_agent import DiffusionSACAgent
+
 
 # 将当前文件的父目录（即项目根目录）加入到搜索路径中
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

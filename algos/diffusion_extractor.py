@@ -28,8 +28,9 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         self.m_candidates = m_candidates
         self.grid_res = grid_res
 
-        # --- 原始状态 96 维的切片节点 ---
-        self.uav_dim = self.n_uavs * 9
+        # --- 原始状态切片节点 ---
+        # 每架 UAV 10 维: [x,y,vx,vy,batt,crashed,dx,dy,load,is_gpu]
+        self.uav_dim = self.n_uavs * 10
         self.grid_dim = (self.grid_res**2) * 3
         self.cand_dim = self.m_candidates * 5
         # self.global_dim = 3

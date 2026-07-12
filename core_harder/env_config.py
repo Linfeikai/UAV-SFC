@@ -125,19 +125,6 @@ DEFAULT_CONFIG = {
     "GRID_RES": GRID_RES,
     "MAX_VNF_LEN": MAX_VNF_LEN,
     "RECORD_DEPLOYMENT": False,
-    # 过载机制：True=超载任务硬砍丢弃(旧)；False=处理器共享竞争延迟(默认)
-    "USE_HARD_CAP": False,
-    # --- VNF↔UAV 亲和(异构加速)机制 ---
-    # UAV_TYPES: 长度 N 的类型标签列表，如 ["gpu","gpu","general","general"]；
-    #   None(默认) 表示所有 UAV 全速处理一切 -> 退化为均质旧行为。
-    # GPU_VNFS: 需要硬件加速的重计算 VNF 名字集合。
-    # NON_GPU_SLOWDOWN: 通用型 UAV 处理重 VNF 的减速倍率(有效算力=1/slowdown)。
-    "UAV_TYPES": None,
-    "GPU_VNFS": {
-        "Encryption", "IntrusionDetection", "ObjectDetection",
-        "Encoder", "FeatureExtraction", "AnomalyDetection",
-    },
-    "NON_GPU_SLOWDOWN": 4.0,
     # 通信
     "BANDWIDTH_HZ": BANDWIDTH_HZ,
     "P_UPLINK": P_UPLINK,

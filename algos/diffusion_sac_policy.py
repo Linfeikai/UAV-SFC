@@ -54,7 +54,8 @@ class DiffusionSACPolicy(BasePolicy):
         T: int = 5,
         beta_schedule: str = "linear",
         n_uavs: int = 4,  # 用于构建 Actor 的掩码参数维度
-        m_candidates: int = 6,  # 用于构建 Actor 的掩码参数维度
+        m_candidates: int = 12,  # 候选任务池大小 M
+        decision_tasks: int = 6,  # 每步最多决策任务数 K
         core_features_dim: int = 256,  # 用于构建 Actor 的核心特征维度
         **kwargs: Any,
     ):
@@ -93,6 +94,7 @@ class DiffusionSACPolicy(BasePolicy):
         self.beta_schedule = beta_schedule
         self.n_uavs = n_uavs
         self.m_candidates = m_candidates
+        self.decision_tasks = decision_tasks
         self.core_features_dim = core_features_dim
 
         # actor和critic共同的参数
@@ -115,6 +117,7 @@ class DiffusionSACPolicy(BasePolicy):
                 "T_steps": self.T,
                 "n_uavs": self.n_uavs,
                 "m_candidates": self.m_candidates,
+                "decision_tasks": self.decision_tasks,
                 "core_features_dim": self.core_features_dim,
             }
         )

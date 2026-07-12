@@ -110,7 +110,7 @@ def run_heuristic_eval(strategy="static", n_episodes=5):
             if strategy == "static":
                 # 移动设为 0，Pick 随机选，Place 随机分
                 mobility = np.zeros(env.N * 2)
-                pick_place = np.random.uniform(-1, 1, env.K + env.K * env.L)
+                pick_place = np.random.uniform(-1, 1, env.K + env.K * env.L * 2)
                 action = np.concatenate([mobility, pick_place])
 
             elif strategy == "greedy":
@@ -130,7 +130,7 @@ def run_heuristic_eval(strategy="static", n_episodes=5):
                         mobility_list.extend([0, 0])
                 mobility = np.array(mobility_list)
                 # 2. Pick/Place 依然保持随机或简单分配，排除算法干扰
-                pick_place = np.random.uniform(-1, 1, env.K + env.K * env.L)
+                pick_place = np.random.uniform(-1, 1, env.K + env.K * env.L * 2)
                 action = np.concatenate([mobility, pick_place])
 
             obs, reward, term, trunc, info = env.step(action)

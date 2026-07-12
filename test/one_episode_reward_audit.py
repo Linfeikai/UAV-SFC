@@ -1,7 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
+
+sys.path.append(".")  # 把当前文件夹加入 Python 路径
+
 from stable_baselines3 import SAC
+from algos.diffusion_sac_agent import DiffusionSACAgent
 import sys
 from omegaconf import OmegaConf
 
@@ -34,7 +39,7 @@ def flatten_hydra_cfg(cfg):
 def run_reward_audit(model_path, n_episodes=5):
     # 1. 获取cfg配置与模型路径
     cfg_path = os.path.join(model_path, ".hydra/config.yaml")
-    model_path = os.path.join(model_path, "SAC_final_model.zip")
+    model_path = os.path.join(model_path, "DIFFUSION_final_model.zip")
 
     # 加载配置与模型
     cfg = OmegaConf.load(cfg_path)
@@ -43,7 +48,7 @@ def run_reward_audit(model_path, n_episodes=5):
     flat_cfg.update({"RECORD_DEPLOYMENT": True})
     env = SFCEnv(config=flat_cfg)
     try:
-        model = SAC.load(model_path)
+        model = DiffusionSACAgent.load(model_path, map_location="cpu")
         print(f"成功加载模型: {model_path}")
     except Exception as e:
         print(f"模型加载失败: {e}")
@@ -55,9 +60,17 @@ def run_reward_audit(model_path, n_episodes=5):
 
     # 1. 对应 SFCEnv._calculate_reward 中的 reward_info 键值
     # 注意：r_survival 在环境里是通过 step() 的终止逻辑触发的，这里我们手动追踪它
-    reward_keys = ["r_task", "r_energy", "r_charge", "r_collision", "r_survival"]
+    reward_keys = [
+        "r_task",
+        "r_unpicked_penalty",  # 🌟 新增：显示躺平惩罚
+        "r_energy",
+        "r_charge",
+        "r_collision",
+        "r_survival",
+    ]
     colors = [
-        "#2ecc71",  # 绿色: 任务
+        "#2ecc71",  # 绿色: 任务 (Success/Drop/Timeout)
+        "#34495e",  # 深灰色: 躺平惩罚 (Unpicked) 🌟 建议加个深色
         "#e74c3c",  # 红色: 能耗
         "#f1c40f",  # 黄色: 充电
         "#e67e22",  # 橙色: 碰撞
@@ -146,4 +159,4 @@ def run_reward_audit(model_path, n_episodes=5):
 
 if __name__ == "__main__":
     # 请确保路径指向你最新的模型文件
-    run_reward_audit("multirun/2026-02-03/16-11-25/1", n_episodes=5)
+    run_reward_audit("experiments/DIFFUSION/change_temp_0421_0958", n_episodes=5)

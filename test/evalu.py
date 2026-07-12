@@ -10,79 +10,90 @@ from core.sfc_env import SFCEnv
 
 def smart_heuristic_policy(env):
     """
-    适配 62 维语义意图空间的智能规则策略
-    维度分布: 8 (移动) + 6 (挑选) + 48 (部署意图: 6任务 * 4VNF * 2坐标)
+    亲和感知 + 逐 VNF 拆分 的强启发式策略（M_split 级别）。
+    - 移动：低电回充电桩，否则追最紧急任务的 UE。
+    - Pick：选候选池最紧急的前 K 个。
+    - Place：逐 VNF 拆分部署——重计算 VNF(GPU_VNFS) 送最空的 GPU 机，
+             轻 VNF 就近且避免过载。异构下这是能规避"放错加速器"惩罚的关键。
+
+    直接读 env 内部状态（current_cand_tasks / vnf_chain / _vnf_affinity），
+    动作用"目标 UAV 当前坐标"编码，经 step 的最近邻映射精确命中该 UAV。
+    维度: N*2(移动) + K(挑选) + K*L*2(逐VNF部署意图)。
     """
     K, L, M, N = env.K, env.L, env.M, env.N
-    width = env.config["GROUND_WIDTH"]
-    height = env.config["GROUND_HEIGHT"]
-
-    # --- A. 移动逻辑 (保持原样，输出 8 维) ---
-    mobility_actions = []
+    W = env.config["GROUND_WIDTH"]
+    H = env.config["GROUND_HEIGHT"]
+    gpu_vnfs = env.config.get("GPU_VNFS", set())
+    uav_types = env.config.get("UAV_TYPES", None)
+    gpu_ids = [i for i in range(N) if uav_types is not None and uav_types[i] == "gpu"]
     charger_loc = env.chargers[0].loc
-    for i, uav in enumerate(env.uavs):
-        if uav.e_battery < uav.battery_capacity * 0.25:
+
+    # --- A. 移动 ---
+    mobility_actions = []
+    primary_target = None
+    if env.current_cand_tasks:
+        primary_target = env.ues[env.current_cand_tasks[0][0]].loc
+    for uav in env.uavs:
+        if uav.is_crashed:
+            target = uav.loc
+        elif uav.e_battery < uav.battery_capacity * 0.25:
             target = charger_loc
-        elif env.current_cand_tasks:
-            target = env.ues[env.current_cand_tasks[0][0]].loc
+        elif primary_target is not None:
+            target = primary_target
         else:
             target = uav.loc
-        diff = target - uav.loc
+        diff = np.asarray(target, dtype=np.float64) - uav.loc
         dist = np.linalg.norm(diff) + 1e-9
         mobility_actions.extend(diff / dist)
 
-    # --- B. 选人逻辑 (保持原样，输出 6 维) ---
+    # --- B. Pick：最紧急的前 K 个 ---
+    num_valid = len(env.current_cand_tasks)
     pick_actions = []
     for k in range(K):
-        if k < len(env.current_cand_tasks):
+        if k < num_valid:
             raw_pick = (k / (M + 1)) * 2 - 1 + 0.001
         else:
             raw_pick = (M / (M + 1)) * 2 - 1 + 0.001
         pick_actions.append(raw_pick)
 
-    # --- C. 部署逻辑 (核心修改：输出 48 维坐标意图) ---
+    # --- C. Place：逐 VNF 拆分 + 亲和感知 ---
+    dt = env.time_slot - env.dt_fly
+    caps = np.array([u.cpu_freq * dt for u in env.uavs], dtype=np.float64)
+    used = np.zeros(N)
     place_intent_actions = []
-    uav_capacity_used = np.zeros(N)
-    dt_compute = env.time_slot - env.dt_fly
-    uav_caps = np.array([u.cpu_freq * dt_compute for u in env.uavs])
-
     for k in range(K):
-        if k < len(env.current_cand_tasks):
-            ue_id, sfc = env.current_cand_tasks[k]
-            ue_loc = env.ues[ue_id].loc
-
-            # 寻找最佳 UAV (逻辑不变：不超载且离 UE 最近)
-            best_uav_idx = -1
-            min_dist = float("inf")
-            for u_id in range(N):
-                if (
-                    not env.uavs[u_id].is_crashed
-                    and uav_capacity_used[u_id] + sfc.total_cycles < uav_caps[u_id]
-                ):
-                    d = np.linalg.norm(env.uavs[u_id].loc - ue_loc)
-                    if d < min_dist:
-                        min_dist = d
-                        best_uav_idx = u_id
-
-            if best_uav_idx == -1:
-                best_uav_idx = np.argmin(uav_capacity_used)
-
-            uav_capacity_used[best_uav_idx] += sfc.total_cycles
-
-            # --- 关键：将该 UAV 的物理位置映射到 [-1, 1] 意图空间 ---
-            target_uav = env.uavs[best_uav_idx]
-            norm_x = (target_uav.loc[0] / width) * 2 - 1
-            norm_y = (target_uav.loc[1] / height) * 2 - 1
-
-            # 为该任务的 L=4 个 VNF 生成同样的意图坐标 (共 4*2=8 个值)
-            for _ in range(L):
-                place_intent_actions.extend([norm_x, norm_y])
-        else:
-            # 填充位：如果不选任务，输出 [0, 0] 坐标意图
+        if k >= num_valid:
             place_intent_actions.extend([0.0, 0.0] * L)
+            continue
+        ue_id, sfc = env.current_cand_tasks[k]
+        ue_loc = env.ues[ue_id].loc
+        for l in range(L):
+            if l < len(sfc.vnf_chain):
+                vnf = sfc.vnf_chain[l]
+                heavy = vnf.vnf_type in gpu_vnfs
+                cand = gpu_ids if (heavy and gpu_ids) else list(range(N))
+                cand = [u for u in cand if not env.uavs[u].is_crashed] or list(range(N))
+                # 有效占用(放错加速器则占用更多)
+                best, best_score = cand[0], -1e18
+                for u in cand:
+                    slack = caps[u] - used[u]
+                    dist = np.linalg.norm(env.uavs[u].loc - ue_loc)
+                    # 重任务重余量，轻任务重距离
+                    score = slack * 1e-9 - (0.0 if heavy else dist * 0.01)
+                    if score > best_score:
+                        best_score, best = score, u
+                aff = env._vnf_affinity(best, vnf)
+                used[best] += vnf.required_cycles / max(aff, 1e-9)
+                tx = env.uavs[best].loc
+                place_intent_actions.extend(
+                    [(tx[0] / W) * 2 - 1, (tx[1] / H) * 2 - 1]
+                )
+            else:
+                place_intent_actions.extend([0.0, 0.0])
 
-    # 最终返回 8 + 6 + 48 = 62 维向量
-    return np.concatenate([mobility_actions, pick_actions, place_intent_actions])
+    return np.concatenate(
+        [mobility_actions, pick_actions, place_intent_actions]
+    ).astype(np.float32)
 
 
 class HeuristicEvaluator:

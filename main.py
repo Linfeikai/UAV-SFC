@@ -350,7 +350,8 @@ def main(cfg: DictConfig):
             ),
             # --- 【新增】：直接传给 Policy，用于实例化带 Mask 的 Actor ---
             n_uavs=flat_config["NUM_UAVS"],  # 确定 Mobility 掩码切片位置
-            m_candidates=flat_config["M"],  # 确定 Pick 掩码切片位置 [cite: 1]
+            m_candidates=flat_config["M"],  # 候选任务池大小
+            decision_tasks=flat_config["K"],  # 确定 Pick 动作切片位置
             core_features_dim=256,  # 对应特征提取器中语义特征的维度
             share_features_extractor=True,
             T=20,  # Actor 的扩散步数
@@ -379,43 +380,66 @@ def main(cfg: DictConfig):
             f"\n🔥 [预热开始] 目标: {warmup_steps} 步 (正在适配 n_envs={n_envs} 的并行 Buffer)..."
         )
 
-        temp_env = SFCEnv(config=flat_config)
-        obs, _ = temp_env.reset()
+        temp_envs = [SFCEnv(config=flat_config) for _ in range(n_envs)]
+        temp_obs = []
+        for env_idx, temp_env in enumerate(temp_envs):
+            obs, _ = temp_env.reset(seed=cfg.seed + 10_000 + env_idx)
+            temp_obs.append(obs)
 
         # 因为每次 add 会存入 n_envs 条数据，循环次数缩减以保持总数不变
         for i in range(warmup_steps // n_envs):
-            if np.random.random() > 0.2:
-                action = smart_heuristic_policy(temp_env)
-            else:
-                action = temp_env.action_space.sample()
+            obs_batch = []
+            next_obs_batch = []
+            action_batch = []
+            reward_batch = []
+            done_batch = []
+            info_vec = []
 
-            next_obs, reward, terminated, truncated, info = temp_env.step(action)
-            done = terminated or truncated
+            for env_idx, temp_env in enumerate(temp_envs):
+                obs = temp_obs[env_idx]
+                if np.random.random() > 0.2:
+                    action = smart_heuristic_policy(temp_env)
+                else:
+                    action = temp_env.action_space.sample()
 
-            # 🌟 核心修复：将单环境数据“广播”成并行形状 (n_envs, ...)
-            # 1. 字典类型的 obs 需要逐项 tile
-            obs_vec = {k: np.tile(v, (n_envs, 1)) for k, v in obs.items()}
-            next_obs_vec = {k: np.tile(v, (n_envs, 1)) for k, v in next_obs.items()}
-            # 2. 动作、奖励、完成信号也需要堆叠
-            action_vec = np.tile(action, (n_envs, 1))
-            reward_vec = np.tile(reward, (n_envs,))
-            done_vec = np.tile(done, (n_envs,))
-            # 3. info 需要变成长度为 n_envs 的列表
-            info_vec = [info] * n_envs
+                next_obs, reward, terminated, truncated, info = temp_env.step(action)
+                done = terminated or truncated
 
-            # 存入 Buffer，现在形状是 (4, 62), (4, 273) 等，完美匹配！
+                obs_batch.append(obs)
+                next_obs_batch.append(next_obs)
+                action_batch.append(action)
+                reward_batch.append(reward)
+                done_batch.append(done)
+                info_vec.append(info)
+
+                if done:
+                    next_obs, _ = temp_env.reset(
+                        seed=cfg.seed + 20_000 + i * n_envs + env_idx
+                    )
+                temp_obs[env_idx] = next_obs
+
+            obs_vec = {
+                key: np.stack([obs[key] for obs in obs_batch], axis=0)
+                for key in obs_batch[0]
+            }
+            next_obs_vec = {
+                key: np.stack([obs[key] for obs in next_obs_batch], axis=0)
+                for key in next_obs_batch[0]
+            }
+            action_vec = np.stack(action_batch, axis=0)
+            reward_vec = np.asarray(reward_batch, dtype=np.float32)
+            done_vec = np.asarray(done_batch, dtype=bool)
+
+            # 存入 Buffer，现在形状是 (4, 62), (4, 273) 等，完美匹配
             model.replay_buffer.add(
                 obs_vec, next_obs_vec, action_vec, reward_vec, done_vec, info_vec
             )
 
-            obs = next_obs
-            if done:
-                obs, _ = temp_env.reset()
-
             if (i + 1) % (max(1, (warmup_steps // n_envs) // 5)) == 0:
                 print(f"   已填入约 {(i + 1) * n_envs}/{warmup_steps} 步...")
 
-        temp_env.close()
+        for temp_env in temp_envs:
+            temp_env.close()
         print(f"✅ 预热完成！Buffer 当前实际存储条数: {model.replay_buffer.size()}")
 
     # =======================================================

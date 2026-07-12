@@ -158,7 +158,8 @@ class DiffusionPolicyActor(BasePolicy):
         features_extractor: BaseFeaturesExtractor,
         features_dim: int,
         n_uavs: int,  # 用于构建 Actor 的掩码参数维度
-        m_candidates: int,  # 用于构建 Actor 的掩码参数维度
+        m_candidates: int,  # 候选任务池大小 M
+        decision_tasks: int,  # 每步最多决策任务数 K
         core_features_dim: int,  # 用于构建 Actor 的核心特征维度
         # 扩散模型特定超参数
         T_steps: int = 20,  # 扩散总步数 T_total
@@ -184,6 +185,7 @@ class DiffusionPolicyActor(BasePolicy):
         self.features_dim = features_dim
         self.n_uavs = n_uavs
         self.m_candidates = m_candidates
+        self.decision_tasks = decision_tasks
         self.core_features_dim = core_features_dim
         self.T = T_steps
         self.T_log_prob = log_prob_n_steps
@@ -212,6 +214,7 @@ class DiffusionPolicyActor(BasePolicy):
             # --- 【新增】确保模型保存/加载后依然能正确执行 Ray Mask ---
             n_uavs=self.n_uavs,
             m_candidates=self.m_candidates,
+            decision_tasks=self.decision_tasks,
             core_features_dim=self.core_features_dim,
             # -------------------------------------------------------
             T_steps=self.T,
@@ -264,7 +267,7 @@ class DiffusionPolicyActor(BasePolicy):
         new_x0[:, : self.n_uavs * 2] = mobility_part.reshape(B, -1)
         # --- B. Pick 处理 (8-13 维) ---
         p_start = 2 * self.n_uavs
-        p_end = p_start + self.m_candidates
+        p_end = p_start + self.decision_tasks
         picks = new_x0[:, p_start:p_end]
         # 修正：使用 minimum/maximum 解决 Tensor 边界报错
         picks = torch.maximum(picks, torch.tensor(-1.0, device=picks.device))
@@ -442,10 +445,7 @@ class DiffusionPolicyActor(BasePolicy):
             .view(1, 1, self.T_log_prob, 1)
             .expand(B, self.N_log_prob, -1, -1)
         )
-        core_features_for_net = features_expanded[
-            :, :, :, : self.core_features_dim
-        ]  # 只取核心特征输入 epsilon_net
-        # 预测噪声 ε_φ
+        # 预测噪声 ε_φ，只取核心特征输入 epsilon_net
         # reshape for batch matmul: [B*N*T, Dim]
         predicted_noise = self._epsilon_net(
             features_expanded[:, :, :, : self.core_features_dim].reshape(

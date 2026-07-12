@@ -155,6 +155,7 @@ def main(cfg: DictConfig):
         **base_kwargs,
         "n_uavs": env.config["NUM_UAVS"],
         "m_candidates": env.config["M"],
+        "decision_tasks": env.config["K"],
         "core_features_dim": 256,
         "T": 20,
         "net_arch": [512, 512, 512],

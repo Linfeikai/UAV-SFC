@@ -6,6 +6,7 @@
 
 import numpy as np
 import torch as th
+import wandb
 from torch.nn import functional as F
 from gymnasium import spaces
 from typing import Any, ClassVar, Optional, Type, TypeVar, Union, Dict, List, Tuple
@@ -114,6 +115,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.max_grad_norm = max_grad_norm
         self.critic_updates_per_step = 4  # 现在没有使用到
         self.qne_entropy_lambda = 0.001
+        self.policy_delay = 2  # Actor 每隔 policy_delay 个 gradient_step 更新一次
 
         if _init_setup_model:
             self._setup_model()
@@ -183,24 +185,6 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
             )
             obs = replay_data.observations
 
-            # if isinstance(obs, dict):
-            #     for v in obs.values():
-            #         if th.isnan(v).any() or th.isinf(v).any():
-            #             raise ValueError("NaN or Inf detected in observations!")
-            # else:
-            #     if th.isnan(obs).any() or th.isinf(obs).any():
-            #         raise ValueError("NaN or Inf detected in observations!")
-            # if (
-            #     th.isinf(replay_data.actions).any()
-            #     or th.isnan(replay_data.actions).any()
-            # ):
-            #     raise ValueError("NaN or Inf detected in actions!")
-            # if (
-            #     th.isinf(replay_data.rewards).any()
-            #     or th.isnan(replay_data.rewards).any()
-            # ):
-            #     raise ValueError("NaN or Inf detected in rewards!")
-
             # 【修改】直接使用 self.ent_coef_tensor，不再需要复杂的if-else
             ent_coef_tensor = self.ent_coef_tensor
 
@@ -220,11 +204,8 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     # -------------------------------------------------------------
                     # 【核心插入】：Wandb 动作流形与越界监控 (白盒化诊断)
                     # -------------------------------------------------------------
-                    N_UAV = getattr(self.env, "N", 4) if hasattr(self.env, "N") else 4
-                    K_PICK = getattr(self.env, "K", 2) if hasattr(self.env, "K") else 2
-
-                    dim_mob = N_UAV * 2
-                    dim_pick = K_PICK
+                    dim_mob = self.actor.n_uavs * 2
+                    dim_pick = self.actor.decision_tasks
 
                     # 切片分解动作 (注意此时 next_actions 已经是 [-1, 1] 范围)
                     mob_acts = next_actions[:, :dim_mob]
@@ -242,8 +223,6 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     self.logger.record("Action_Boundary/Place_HitRate", place_hit_rate)
 
                     # 2. 直方图属于 Wandb 独有高级对象，必须单独发送
-                    import wandb
-
                     if wandb.run is not None and self._n_updates % 500 == 0:
                         wandb.log(
                             {
@@ -334,7 +313,9 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                 self.critic.optimizer.step()
 
             # --- 3. Actor Loss 计算 (QNE核心逻辑) ---
-            if (self._n_updates + 1) % 2 == 0:
+            # 用循环内的 gradient_step 做延迟判断，保证每 policy_delay 步稳定更新一次 Actor，
+            # 不受历史累计 _n_updates 奇偶性的影响
+            if gradient_step % self.policy_delay == 0:
                 # (a) 准备计算Actor Loss所需的数据
                 # 从replay_data中获取干净的动作`a` (即 `replay_data.actions`)
                 # 和对应的状态`s` (即 `replay_data.observations`)
@@ -399,7 +380,27 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     k_candidate_actions = (
                         a_t_expanded - sqrt_one_minus_alpha_bar_exp * k_noises
                     ) / sqrt_alpha_bar_exp  # [B, K, A_dim]
-                    policy_k_candidate_actions = th.tanh(k_candidate_actions)
+
+                    # 【修复 #3】与采样路径 (_sample_from_noise) 保持一致：
+                    # 在 tanh 之前对候选动作施加 ray mask，否则 Critic 打分评估的是
+                    # 未受物理约束的动作，而实际部署的是受约束动作，二者分布不一致。
+                    features_for_mask = self.actor.extract_features(
+                        states_from_buffer, self.actor.features_extractor
+                    )
+                    features_mask_exp = features_for_mask.unsqueeze(1).expand(
+                        -1, self.qne_k_samples, -1
+                    ).reshape(batch_size * self.qne_k_samples, -1)
+                    masked_candidates = self.actor._apply_ray_mask(
+                        k_candidate_actions.reshape(
+                            batch_size * self.qne_k_samples, -1
+                        ),
+                        features_mask_exp,
+                    )
+                    policy_k_candidate_actions = th.tanh(
+                        masked_candidates.reshape(
+                            batch_size, self.qne_k_samples, -1
+                        )
+                    )
                     self.logger.record(
                         "debug/qne_candidate_actions_mean",
                         th.mean(policy_k_candidate_actions).item(),
@@ -490,12 +491,9 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     # --- 添加结束 ---
 
                     # (e) Actor进行噪声预测
-                    # 1. 提取总特征 [Batch, 273]
-                    features_from_buffer = self.actor.extract_features(
-                        states_from_buffer, self.actor.features_extractor
-                    )
+                    # 1. 复用上面 ray mask 时已提取的总特征 [Batch, 273]
                     # 2. 【必须切片】：只取前 core_features_dim (256) 维进大脑
-                    core_feats = features_from_buffer[:, : self.actor.core_features_dim]
+                    core_feats = features_for_mask[:, : self.actor.core_features_dim]
                     # 3. 噪声预测
                     predicted_noise = self.actor._epsilon_net(
                         core_feats, noisy_actions_t, t

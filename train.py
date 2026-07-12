@@ -1,36 +1,87 @@
-from stable_baselines3 import SAC  # 假设你使用的是 SAC 或其他 SB3 算法
-from algos.diffusion_sac_agent import DiffusionSACAgent
-from algos.diffusion_sac_policy import DiffusionSACPolicy  # 你的策略类
-from algos.diffusion_extractor import SFCFeaturesExtractor  # 你的策略类
-
-# 导入你的环境
-from core.sfc_env import SFCEnv
-
-# 1. 实例化环境
-env = SFCEnv()
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+from torchvision.datasets import MNIST
+from torchvision.transforms import ToTensor
+import matplotlib.pyplot as plt
 
 
-def test_pipeline():
-    # 1. 初始化环境
-    env = SFCEnv()
+# ====================== 像样的小UNet ======================
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.lin_t1 = nn.Linear(1, 28 * 28)
+        self.conv1 = nn.Conv2d(1, 32, 3, padding=1)
+        self.conv2 = nn.Conv2d(32, 32, 3, padding=1)
+        self.conv3 = nn.Conv2d(32, 32, 3, padding=1)
+        self.conv4 = nn.Conv2d(32, 1, 3, padding=1)
 
-    # 2. 定制图纸 (包含环境的真实参数)
-    policy_kwargs = dict(
-        features_extractor_class=SFCFeaturesExtractor,
-        features_extractor_kwargs=dict(n_uavs=4, m_candidates=6, grid_res=3),
-        share_features_extractor=True,  # 开启我们刚修好的共享魔法！
-        T=20,  # 传给 Actor 的扩散步数
-        net_arch=[256, 256],
-    )
-
-    model = DiffusionSACAgent(
-        policy=DiffusionSACPolicy, env=env, policy_kwargs=policy_kwargs
-    )
-    print("模型初始化成功！开始点火测试...")
-    # 4. 只跑 100 步，验证环境交互、特征提取、Actor生动动作、Critic算Q值、梯度回传是否畅通
-    model.learn(total_timesteps=100)
-    print("点火测试完美通过！没有 Shape Mismatch 报错！")
+    def forward(self, t, x):
+        B = x.shape[0]
+        t_emb = self.lin_t1(t).view(B, 1, 28, 28)
+        h = F.silu(self.conv1(x + t_emb))
+        h = F.silu(self.conv2(h))
+        h = F.silu(self.conv3(h))
+        return self.conv4(h)
 
 
+# ====================== 数据 ======================
+ds = MNIST("./mnist", train=True, download=True, transform=ToTensor())
+dl = DataLoader(ds, batch_size=128, shuffle=True)
+
+
+# ====================== 训练 ======================
+def train():
+    model = Net()
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    for epoch in range(12):
+        total = 0
+        for img, _ in dl:
+            B = img.shape[0]
+            t = torch.rand(B, 1)
+            eps = torch.randn_like(img)
+            x = t.view(B, 1, 1, 1) * img + (1 - t).view(B, 1, 1, 1) * eps
+
+            v_pred = model(t, x)
+            v_target = img - eps
+            loss = F.mse_loss(v_pred, v_target)
+
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total += loss.item() * B
+
+        print(f"Epoch {epoch + 1:2d} | Loss {total / len(ds):.4f}")
+    return model
+
+
+# ====================== 生成 ======================
+@torch.no_grad()
+def generate(model, n=64):
+    x = torch.randn(n, 1, 28, 28)
+    steps = 40
+    dt = 1 / steps
+    for i in range(steps):
+        t = torch.ones(n, 1) * i * dt
+        x = x + model(t, x) * dt
+    return x
+
+
+# ====================== 画图 ======================
+def show(imgs):
+    imgs = imgs.clamp(0, 1).numpy()
+    plt.figure(figsize=(9, 9))
+    for i in range(64):
+        plt.subplot(8, 8, i + 1)
+        plt.imshow(imgs[i, 0], cmap="gray")
+        plt.axis("off")
+    plt.show()
+
+
+# ====================== 运行 ======================
 if __name__ == "__main__":
-    test_pipeline()
+    model = train()
+    imgs = generate(model)
+    show(imgs)

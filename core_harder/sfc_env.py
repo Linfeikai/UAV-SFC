@@ -27,13 +27,6 @@ class SFCEnv(gym.Env):
 
         self.N = self.config["NUM_UAVS"]
         self.ue_num = self.config["NUM_UES"]
-
-        # 防御性校验：异构类型列表长度必须与 UAV 数量一致，否则 _vnf_affinity 会越界
-        _uav_types = self.config.get("UAV_TYPES", None)
-        if _uav_types is not None:
-            assert len(_uav_types) == self.N, (
-                f"UAV_TYPES 长度({len(_uav_types)}) 必须等于 NUM_UAVS({self.N})"
-            )
         self.L = self.config["MAX_VNF_LEN"]
         self.M = self.config["M"]  # 候选池大小
         self.K = self.config["K"]  # 候选池中选K个任务
@@ -114,10 +107,10 @@ class SFCEnv(gym.Env):
         # (3) Candidates: M * 5 (x, y, data, cycles, time)
         # (4) Global: 3 (step_norm, charger_x, charger_y)
 
-        # --- A. UAV Bounds (10维) ---
-        # [x, y, vx, vy, batt, crashed, dx, dy, load, is_gpu]
-        uav_low = np.array([0, 0, -1, -1, 0, 0, -1, -1, 0, 0], dtype=np.float32)
-        uav_high = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1], dtype=np.float32)
+        # --- A. UAV Bounds (9维) ---
+        # [x, y, vx, vy, batt, crashed, dx, dy, load]
+        uav_low = np.array([0, 0, -1, -1, 0, 0, -1, -1, 0], dtype=np.float32)
+        uav_high = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1], dtype=np.float32)
 
         # --- B. Grid Bounds (27维) ---
         # 密度、重量、热度的累加值，给 10.0 作为安全上限
@@ -171,18 +164,10 @@ class SFCEnv(gym.Env):
     def _create_entities(self):
         """创建 UAV、UE 和 充电桩 实例"""
         # 创建 UAV 实例
-        # 支持异构算力：若 config 提供 UAV_CPU_FREQS(长度 N 的列表)则按索引赋值，
-        # 否则所有 UAV 回退到统一的 UAV_CPU_FREQ。
-        cpu_freqs = self.config.get("UAV_CPU_FREQS", None)
         for i in range(self.N):
-            freq_i = (
-                float(cpu_freqs[i])
-                if cpu_freqs is not None
-                else self.config["UAV_CPU_FREQ"]
-            )
             uav = UAVNode(
                 node_id=i,
-                cpu_freq=freq_i,
+                cpu_freq=self.config["UAV_CPU_FREQ"],
                 max_speed=self.config["UAV_MAX_SPEED"],
                 battery_capacity=self.config["BATTERY_CAPACITY"],
                 charging_power=self.config["UAV_CHARGING_POWER"],
@@ -349,11 +334,7 @@ class SFCEnv(gym.Env):
         uav_current_locs = np.array([u.loc for u in self.uavs])
         displacement = average_velocities * self.dt_fly  # 保留方向信息
         proposed_locs = uav_current_locs + displacement  # (N,2)
-        map_upper = np.array(
-            [self.config["GROUND_WIDTH"], self.config["GROUND_HEIGHT"]],
-            dtype=np.float32,
-        )
-        clamped_locs = np.clip(proposed_locs, 0, map_upper)
+        clamped_locs = np.clip(proposed_locs, 0, self.config["GROUND_WIDTH"])
         # 4.碰撞检测：如果两者相撞，都回到原来的位置 not moved
         # 这里要增加penalty！！告诉agent你不能让两个uav碰撞
         collision_mask = np.zeros(self.N, dtype=bool)
@@ -453,22 +434,17 @@ class SFCEnv(gym.Env):
         m = np.asarray(mapping, dtype=np.int64)
         return m[:chain_len]
 
-    def _vnf_affinity(self, uav_id, vnf) -> float:
-        """UAV 处理某 VNF 的速度倍率。
-        有效算力 = cpu_freq * affinity；有效计算时间 = required_cycles / (cpu_freq*affinity)。
-        - UAV_TYPES=None：全部返回 1.0（均质旧行为）。
-        - 通用型 UAV 处理 GPU_VNFS 里的重 VNF：返回 1/NON_GPU_SLOWDOWN（减速）。
-        - 其余情况：1.0（全速）。
-        """
-        uav_types = self.config.get("UAV_TYPES", None)
-        if uav_types is None:
-            return 1.0
-        # uav_id 可能是 numpy 整型；OmegaConf ListConfig 只接受原生 int 索引
-        if uav_types[int(uav_id)] == "gpu":
-            return 1.0
-        if vnf.vnf_type in self.config["GPU_VNFS"]:
-            return 1.0 / float(self.config["NON_GPU_SLOWDOWN"])
-        return 1.0
+    def _regional_expert_uav(self, loc: np.ndarray) -> int:
+        width_mid = self.config["GROUND_WIDTH"] * 0.5
+        height_mid = self.config["GROUND_HEIGHT"] * 0.5
+        east = int(float(loc[0]) >= width_mid)
+        north = int(float(loc[1]) >= height_mid)
+        return north * 2 + east
+
+    def _effective_cycles(self, required_cycles: float, uav_id: int, ue_loc: np.ndarray) -> float:
+        expert_uav = self._regional_expert_uav(ue_loc)
+        multiplier = 0.65 if int(uav_id) == expert_uav else 1.75
+        return float(required_cycles) * multiplier
 
     def _hard_cap_drop_sfcs(
         self, candidate_tasks: list[tuple[int, SFC, np.ndarray]]
@@ -504,11 +480,11 @@ class SFCEnv(gym.Env):
                 if ue_id in dropped_ue_ids:
                     continue
 
-                # 累加该 SFC 的所有 VNF 到对应的 UAV(有效 cycles，含亲和)
+                ue_loc = self.ues[ue_id].loc
+                # 累加该 SFC 的所有 VNF 到对应的 UAV
                 for vnf_idx, uav_id in enumerate(mapping):
-                    vnf = sfc.vnf_chain[vnf_idx]
-                    current_load[uav_id] += vnf.required_cycles / self._vnf_affinity(
-                        uav_id, vnf
+                    current_load[uav_id] += self._effective_cycles(
+                        sfc.vnf_chain[vnf_idx].required_cycles, uav_id, ue_loc
                     )
 
             # 检查哪些 UAV 依然超载 (容差 1.0 cycle 避免浮点误差)
@@ -560,9 +536,8 @@ class SFCEnv(gym.Env):
         comp_time_sum = 0.0
         for vnf_idx, uav_id in enumerate(vnf_uav_map):
             vnf = sfc.vnf_chain[vnf_idx]
-            comp_time_sum += vnf.required_cycles / (
-                self.uavs[uav_id].cpu_freq * self._vnf_affinity(uav_id, vnf)
-            )
+            effective_cycles = self._effective_cycles(vnf.required_cycles, uav_id, ue_loc)
+            comp_time_sum += effective_cycles / self.uavs[uav_id].cpu_freq
 
         # Transmission time estimate (conservative)
         tx_time_sum = 0.0
@@ -581,6 +556,30 @@ class SFCEnv(gym.Env):
         estimated_total = t_up + comp_time_sum + tx_time_sum
         return estimated_total
 
+    def _remove_task(self, ue_id: int, sfc: SFC) -> bool:
+        buffer = self.ues[ue_id].task_buffer
+        try:
+            buffer.remove(sfc)
+            return True
+        except ValueError:
+            return False
+
+    def _drop_expired_tasks(self):
+        rewards = np.zeros(self.ue_num, dtype=np.float32)
+        timeout_count = 0
+        for ue_id, ue in enumerate(self.ues):
+            kept = []
+            while ue.task_buffer:
+                sfc = ue.task_buffer.popleft()
+                if self.current_time >= sfc.deadline:
+                    sfc.status = -1
+                    rewards[ue_id] += self.config["RWD_TIMEOUT"]
+                    timeout_count += 1
+                else:
+                    kept.append(sfc)
+            ue.task_buffer.extend(kept)
+        return rewards, timeout_count
+
     def _task_admission_stage(self, chosen_tasks):
         """
         负责把不合格的任务刷掉
@@ -597,7 +596,7 @@ class SFCEnv(gym.Env):
         for ue_id, sfc, vnf_uav_map in chosen_tasks:
             # A. Zombie Check
             if self.current_time >= sfc.deadline:
-                self.ues[ue_id].task_buffer.popleft()
+                self._remove_task(ue_id, sfc)
                 stage_rewards[ue_id] += self.config["RWD_DROP"]
                 dropped_count += 1
                 continue
@@ -607,7 +606,7 @@ class SFCEnv(gym.Env):
                 sfc, vnf_uav_map, self.ues[ue_id].loc
             )
             if estimated_total > dt_compute_window:
-                self.ues[ue_id].task_buffer.popleft()
+                self._remove_task(ue_id, sfc)
                 stage_rewards[ue_id] += self.config["RWD_DROP"]
                 dropped_count += 1
                 continue
@@ -615,18 +614,12 @@ class SFCEnv(gym.Env):
             pre_eligible_tasks.append((ue_id, sfc, vnf_uav_map))
 
         # --- B. 群体硬上限检查 ---
-        # 硬砍模式：超载任务直接丢弃（旧机制，可通过 config 保留用于对照）。
-        # 软竞争模式（默认）：不丢弃，改由 _evaluate_performance 里的排队竞争
-        # 延迟来体现过载后果——过载 -> 变慢 -> 可能超时，惩罚渐进且可归因到具体部署。
-        if self.config.get("USE_HARD_CAP", False):
-            dropped_by_cap = self._hard_cap_drop_sfcs(pre_eligible_tasks)
-        else:
-            dropped_by_cap = set()
+        dropped_by_cap = self._hard_cap_drop_sfcs(pre_eligible_tasks)
 
         final_tasks = []
         for ue_id, sfc, mapping in pre_eligible_tasks:
             if ue_id in dropped_by_cap:
-                self.ues[ue_id].task_buffer.popleft()
+                self._remove_task(ue_id, sfc)
                 # 记录惩罚
                 stage_rewards[ue_id] += self.config["RWD_DROP"]
                 dropped_count += 1
@@ -671,10 +664,12 @@ class SFCEnv(gym.Env):
             for vnf_idx, uav_id in enumerate(vnf_uav_map):
                 vnf = sfc.vnf_chain[vnf_idx]
 
-                # --- A. 累加计算负载(有效 cycles = 名义/亲和，放错加速器则占用更多) ---
-                uav_total_cycles[uav_id] += vnf.required_cycles / self._vnf_affinity(
-                    uav_id, vnf
+                # --- A. 累加计算负载 ---
+                ue_loc = self.ues[ue_id].loc
+                effective_cycles = self._effective_cycles(
+                    vnf.required_cycles, uav_id, ue_loc
                 )
+                uav_total_cycles[uav_id] += effective_cycles
 
                 # --- B. 累加传输能耗 (如果涉及跨机传输) ---
                 # 只有当不是最后一个 VNF，且下一跳在不同 UAV 上时，才产生 Backhaul 能耗
@@ -749,11 +744,8 @@ class SFCEnv(gym.Env):
                 continue
 
             # A. 计算计算能耗 (E = P * t)
-            # 实际忙碌时间 = 总周期 / 频率，但一个 slot 内 UAV 最多只能计算
-            # dt_compute 秒（过载时任务变慢而非无限延长机时），故钳制上限。
-            busy_time = min(
-                uav_total_cycles[uav_id] / uav.cpu_freq, dt_compute
-            )
+            # 实际忙碌时间 = 总周期 / 频率
+            busy_time = uav_total_cycles[uav_id] / uav.cpu_freq
             e_comp = FULL_LOAD_POWER * busy_time
             uav_compute_energy[uav_id] = e_comp
 
@@ -797,7 +789,7 @@ class SFCEnv(gym.Env):
                 crash_failed_count += 1
 
                 if self.ues[ue_id].task_buffer:
-                    self.ues[ue_id].task_buffer.popleft()
+                    self._remove_task(ue_id, sfc)
                     sfc.status = -2  # 状态码：因坠毁中断
 
         total_compute = float(np.sum(billing_info["uav_compute_energy"]))
@@ -837,17 +829,6 @@ class SFCEnv(gym.Env):
         P_TX_CROSS = self.config["UAV_P_TX_CROSS"]
         P_UPLINK = self.config["P_UPLINK"]
 
-        # --- 处理器共享(processor-sharing)竞争因子 ---
-        # 一架 UAV 本 slot 被分配的总周期 W 若超过其容量 C，则其上每个 VNF 的
-        # 计算时间被拉长 max(1, W/C) 倍：负载越挤，算得越慢，可能因此超时。
-        # 这取代了旧的"超载即硬砍"，让部署决策的好坏平滑、可归因地反映到延迟上。
-        dt_compute_window = self.time_slot - self.dt_fly
-        uav_total_cycles = usage_stats["uav_total_cycles"]
-        cap_cycles = np.array(
-            [u.cpu_freq * dt_compute_window for u in self.uavs], dtype=np.float64
-        )
-        contention = np.maximum(1.0, uav_total_cycles / (cap_cycles + 1e-9))
-
         # 2. 逐一评估任务 (只有通过了准入和容量检查的任务才会到这里)
         for ue_id, sfc, mapping in eligible_tasks:
             ue = self.ues[ue_id]
@@ -867,11 +848,11 @@ class SFCEnv(gym.Env):
             for vnf_idx, uav_id in enumerate(mapping):
                 vnf = sfc.vnf_chain[vnf_idx]
 
-                # 1. 计算处理延迟（含处理器共享竞争减速 + VNF↔UAV 亲和减速）
-                t_comp = vnf.required_cycles / (
-                    self.uavs[uav_id].cpu_freq * self._vnf_affinity(uav_id, vnf)
+                # 1. 计算处理延迟
+                effective_cycles = self._effective_cycles(
+                    vnf.required_cycles, uav_id, ue.loc
                 )
-                t_comp *= contention[uav_id]
+                t_comp = effective_cycles / self.uavs[uav_id].cpu_freq
                 current_delay += t_comp
 
                 # 2. 跨 UAV 传输延迟 (如果有下一跳)
@@ -1133,6 +1114,9 @@ class SFCEnv(gym.Env):
 
         chosen_tasks_with_map = []
         picked_ue_ids = set()  # 用于去重，防止 Agent 重复选同一个候选人
+        # 注意：这里依然保留了 floor，因为任务池 M 是离散的
+        pick_indices = np.floor((raw_pick + 1) / 2 * (M + 1)).astype(np.int32)
+        pick_indices = np.clip(pick_indices, 0, M)
         for k in range(K):
             cand_idx = pick_indices[k]
             # 如果索引在 [0, M-1] 范围内，说明 Pick 了一个真实候选人
@@ -1162,22 +1146,14 @@ class SFCEnv(gym.Env):
             truncated = False
             info = {**sfc_results, **charge_info, "perf/crashed": 1.0}
             return self._get_obs(), reward, terminated, truncated, info
-        # 清理未选中的候选任务 1/22 15：34 ：先不做惩罚了，只清理任务
-        num_unpicked = 0
-        unpicked_penalty = 0.0  # 💡3/4 23:04 新增：累计不接单的惩罚
-        for ue in self.ues:
-            if ue.task_buffer:
-                # 无论这个 UE 是否被 Pick 了，剩下的所有任务在 Slot 结束时都会失效
-                # (如果被 Pick 了，头名任务已经在 _process_sfc_tasks 里处理并 popleft 了)
-                # (如果没被 Pick，那么整个队列都是要被丢弃的)
-                tasks_ignored = len(ue.task_buffer)
-                num_unpicked += tasks_ignored
-
-                # 💡 新增：不接单等同于被丢弃，必须严惩！
-                unpicked_penalty += tasks_ignored * self.config["RWD_DROP"]
-                ue.task_buffer.clear()
+        num_unpicked = sum(len(ue.task_buffer) for ue in self.ues)
+        backlog_penalty = -0.01 * num_unpicked
         # --- 5. 环境状态更新 (为下一回合生成新的任务) ---
         self.current_time += self.time_slot - self.dt_fly
+        expired_rewards, expired_count = self._drop_expired_tasks()
+        sfc_results["rewards"] += expired_rewards
+        sfc_results["timeout_count"] += expired_count
+        sfc_results["failed_count"] += expired_count
         self._update_state()
 
         # --- 6. 【数据对齐】：构建你需要的“当季报表” ---
@@ -1185,17 +1161,11 @@ class SFCEnv(gym.Env):
         sfc_results["total_available"] = total_tasks_on_table  # 1. 桌面上一共有多少活
         sfc_results["actually_picked"] = num_picked  # 2. Agent 接了几个
 
-        # 3. 总丢弃数 = 准入杀掉的 + 根本没 Pick 的
-        # 这能让你看出是“能力问题”还是“名额不够”
         sfc_results["unpicked_count"] = num_unpicked
-        sfc_results["dropped_count"] += num_unpicked
-        # 修正总失败数：确保涵盖了所有没成功的任务 failed = 准入拒绝 + 坠毁失败 + 正常超时 + 没认领
-        sfc_results["failed_count"] += num_unpicked
 
         reward, reward_info = self._calculate_reward(sfc_results, flight_info)
-        # 💡 新增：将躺平惩罚算入本步总奖励
-        reward += unpicked_penalty
-        reward_info["r_unpicked_penalty"] = float(unpicked_penalty)  # 方便在TB里看
+        reward += backlog_penalty
+        reward_info["r_backlog_penalty"] = float(backlog_penalty)
         # 3. 为下一回合准备候选人 (刷新 self.current_cand_tasks)
         all_active = [
             (i, ue.task_buffer[0]) for i, ue in enumerate(self.ues) if ue.task_buffer
@@ -1353,11 +1323,7 @@ class SFCEnv(gym.Env):
                 jitter = self.np_random.uniform(-20, 20, size=2)
             else:
                 jitter = np.zeros(2)  # 过拟合测试取消抖动
-            map_upper = np.array(
-                [self.config["GROUND_WIDTH"], self.config["GROUND_HEIGHT"]],
-                dtype=np.float32,
-            )
-            start_loc = np.clip(base_loc + jitter, 0, map_upper)
+            start_loc = np.clip(base_loc + jitter, 0, self.config["GROUND_WIDTH"])
             uav.reset(start_loc)
         # 2. 重置 UE (类型洗牌与随机位置)
         current_type_list = self.fixed_type_list.copy()
@@ -1381,23 +1347,12 @@ class SFCEnv(gym.Env):
                     loc = center + self.np_random.normal(0, cluster_std, size=2)
                 else:
                     loc = self.np_random.uniform(
-                        [20.0, 20.0],
-                        [
-                            self.config["GROUND_WIDTH"] - 20,
-                            self.config["GROUND_HEIGHT"] - 20,
-                        ],
-                        size=2,
+                        20, self.config["GROUND_WIDTH"] - 20, size=2
                     )
 
-            loc_low = np.array([20.0, 20.0], dtype=np.float32)
-            loc_high = np.array(
-                [
-                    self.config["GROUND_WIDTH"] - 20,
-                    self.config["GROUND_HEIGHT"] - 20,
-                ],
-                dtype=np.float32,
+            new_loc = np.clip(loc, 20, self.config["GROUND_WIDTH"] - 20).astype(
+                np.float32
             )
-            new_loc = np.clip(loc, loc_low, loc_high).astype(np.float32)
             ue.reset(new_nodetype=assigned_type, new_loc=new_loc)
         # 3. 重置环境全局元数据
         self.current_time = 0.0
@@ -1532,11 +1487,6 @@ class SFCEnv(gym.Env):
             obs_list.append((uav.loc[1] - charger_loc[1]) / height)
             # 状态增强：实时负载 (1维) - 引导“负载均衡”
             obs_list.append(uav_loads[i])
-            # 能力增强：UAV 类型 (1维) - GPU 加速机=1.0，通用机/均质=0.0
-            # 引导策略学会"把重 VNF 送到 GPU 机"
-            uav_types = self.config.get("UAV_TYPES", None)
-            is_gpu = 1.0 if (uav_types is not None and uav_types[i] == "gpu") else 0.0
-            obs_list.append(is_gpu)
 
         # --- 2. 宏观需求流形 (3x3 Grid = 27 维) ---
         # 对应 ICLR 2025 流形压缩：不关心具体哪个 UE，关心哪个区域“红”了
