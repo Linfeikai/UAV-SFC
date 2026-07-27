@@ -248,6 +248,17 @@ class SFCEnv(gym.Env):
         Args:
             mobility_act (np.ndarray): 形状 (num_uavs, 2) 的数组，表示每个 UAV 在 x 和 y 方向上的速度指令，范围 [-1, 1]。
         """
+        # Optionally enforce the same directional mobility mask used by the
+        # Diffusion actor. This provides a fair safety-enabled baseline for
+        # vanilla algorithms whose policy cannot apply the custom ray mask.
+        if self.config.get("APPLY_MOBILITY_MASK_IN_ENV", False):
+            bounds = self.get_action_mask_params()["mobility_bounds"]
+            mask_x = np.where(mobility_act[:, 0] >= 0, bounds[:, 1], bounds[:, 0])
+            mask_y = np.where(mobility_act[:, 1] >= 0, bounds[:, 3], bounds[:, 2])
+            mobility_act = mobility_act.copy()
+            mobility_act[:, 0] *= mask_x
+            mobility_act[:, 1] *= mask_y
+
         # 0. 准备数据
         flight_info = {
             "energy_cost": 0.0,
@@ -274,7 +285,9 @@ class SFCEnv(gym.Env):
         # 找出缩放因子： V_max / V_current
         # 如果 V_current > V_max，则 scale < 1
         scale_factors = np.where(
-            current_speed_sq > 0, np.sqrt(max_speed_sq / current_speed_sq), 1.0
+            current_speed_sq > 0,
+            np.sqrt(max_speed_sq / np.maximum(current_speed_sq, 1e-12)),
+            1.0,
         )
         # 确保只缩减超速的，未超速的保持 scale=1.0
         scale_factors = np.minimum(scale_factors, 1.0)
@@ -417,7 +430,6 @@ class SFCEnv(gym.Env):
             # 选电量最低的 UAV，距离作为次级排序以打破平局  先比较电量，再比较距离，不返回新列表，修改原列表
             candidates.sort(key=lambda x: (x[1], x[2]))
             winner_idx = candidates[0][0]
-            charged.append(winner_idx)
             winner_uav = self.uavs[winner_idx]
 
             # 执行充电并写回 UAV 实例（通过封装方法）
@@ -429,6 +441,7 @@ class SFCEnv(gym.Env):
 
             winner_uav.record_harvested_energy(harvested, apply=False)
             if harvested > 0:
+                charged.append(winner_idx)
                 seconds_used += charge_duration
         # 充电桩利用率计算
         util = seconds_used / max(len(self.chargers) * charge_duration, 1e-9)
@@ -1019,8 +1032,45 @@ class SFCEnv(gym.Env):
         r_collision_weight = float(self.config.get("RWD_COLLISION", -5.0))
         r_collision = r_collision_weight * collision_count
 
-        # 5. 总分汇总
-        total_reward = r_task + r_energy + r_charge + r_collision
+        # 5. Optional dense navigation signal when battery is low. The term is
+        # zero above the threshold and grows with both battery deficit and
+        # normalized distance to the nearest charger.
+        r_low_battery_distance = 0.0
+        low_battery_weight = float(
+            self.config.get("RWD_LOW_BATTERY_DISTANCE", 0.0)
+        )
+        low_battery_threshold = float(
+            self.config.get("LOW_BATTERY_SHAPING_THRESHOLD", 0.30)
+        )
+        if low_battery_weight > 0 and self.chargers and low_battery_threshold > 0:
+            map_diagonal = max(
+                np.hypot(
+                    self.config["GROUND_WIDTH"], self.config["GROUND_HEIGHT"]
+                ),
+                1e-9,
+            )
+            for uav in self.uavs:
+                battery_ratio = uav.e_battery / max(uav.battery_capacity, 1.0)
+                deficit = max(0.0, low_battery_threshold - battery_ratio)
+                if deficit <= 0:
+                    continue
+                nearest_distance = min(
+                    np.linalg.norm(uav.loc - charger.loc) for charger in self.chargers
+                )
+                r_low_battery_distance -= (
+                    low_battery_weight
+                    * (deficit / low_battery_threshold)
+                    * (nearest_distance / map_diagonal)
+                )
+
+        # 6. 总分汇总
+        total_reward = (
+            r_task
+            + r_energy
+            + r_charge
+            + r_collision
+            + r_low_battery_distance
+        )
 
         # 【优化点：更详细的监控字典】
         reward_info = {
@@ -1028,6 +1078,7 @@ class SFCEnv(gym.Env):
             "r_energy": float(r_energy),
             "r_charge": float(r_charge),
             "r_collision": float(r_collision),
+            "r_low_battery_distance": float(r_low_battery_distance),
             "total_energy_J": float(sum_E_i),
             # 方便在 TensorBoard 查看不同失败类型的占比
             "count/completed": int(sfc_results.get("completed_count", 0)),
@@ -1086,50 +1137,39 @@ class SFCEnv(gym.Env):
 
             return self._get_obs(), reward, terminated, truncated, info
 
-        # --- 3. 任务筛选 (Pick) ---
-        # 注意：这里依然保留了 floor，因为任务池 M 是离散的
-        pick_indices = np.floor((raw_pick + 1) / 2 * (M + 1)).astype(np.int32)
-        pick_indices = np.clip(pick_indices, 0, M)
-        # --- 4. 意图解码部署 (Place Intent -> UAV ID) ---
-        # 我们将 K*L*X 的意图矩阵转化为环境需要的 K*L 索引矩阵
-        place_matrix = np.zeros((K, L), dtype=np.int32)
-
-        width = self.config["GROUND_WIDTH"]
-        height = self.config["GROUND_HEIGHT"]
-
-        for k in range(K):
-            for l in range(L):
-                # 将 [-1, 1] 映射到地图坐标 [0, 500]
-                intent_x = (raw_place_intent[k, l, 0] + 1) / 2 * width
-                intent_y = (raw_place_intent[k, l, 1] + 1) / 2 * height
-                intent_loc = np.array([intent_x, intent_y])
-
-                # 寻找距离该意图坐标最近的 UAV
-                best_uav_id = 0
-                min_dist = float("inf")
-                for uav in self.uavs:
-                    if uav.is_crashed:
-                        continue
-                    dist = np.linalg.norm(uav.loc - intent_loc)
-                    if dist < min_dist:
-                        min_dist = dist
-                        best_uav_id = uav.node_id
-
-                place_matrix[k, l] = best_uav_id
-
+        # --- 3. 紧急度选单 + 逐 VNF logits 解码 ---
+        # 候选任务已按紧急度排序，因此动作只负责部署，不再学习 Pick 排列。
         chosen_tasks_with_map = []
-        picked_ue_ids = set()  # 用于去重，防止 Agent 重复选同一个候选人
-        for k in range(K):
-            cand_idx = pick_indices[k]
-            # 如果索引在 [0, M-1] 范围内，说明 Pick 了一个真实候选人
-            if 0 <= cand_idx < len(self.current_cand_tasks):
-                ue_id, sfc = self.current_cand_tasks[cand_idx]
-
-                if ue_id not in picked_ue_ids:
-                    # 获取该任务对应的 UAV 映射方案 (取 place_matrix 的第 k 行)
-                    vnf_uav_map = self._trim_mapping(sfc, place_matrix[k])
-                    chosen_tasks_with_map.append((ue_id, sfc, vnf_uav_map))
-                    picked_ue_ids.add(ue_id)
+        picked_ue_ids = set()
+        remaining_capacity = np.array(
+            [uav.cpu_freq * (self.time_slot - self.dt_fly) for uav in self.uavs],
+            dtype=np.float64,
+        )
+        for k in range(min(K, len(self.current_cand_tasks))):
+            ue_id, sfc = self.current_cand_tasks[k]
+            if ue_id in picked_ue_ids:
+                continue
+            mapping = []
+            for l, vnf in enumerate(sfc.vnf_chain):
+                logits = raw_place_logits[k, l].copy()
+                for uav_id, uav in enumerate(self.uavs):
+                    if uav.is_crashed:
+                        logits[uav_id] = -np.inf
+                ranked_uavs = np.argsort(logits)[::-1]
+                assigned_uav = int(ranked_uavs[0])
+                for uav_id in ranked_uavs:
+                    affinity = max(self._vnf_affinity(int(uav_id), vnf), 1e-9)
+                    effective_cycles = vnf.required_cycles / affinity
+                    if remaining_capacity[uav_id] >= effective_cycles:
+                        assigned_uav = int(uav_id)
+                        break
+                affinity = max(self._vnf_affinity(assigned_uav, vnf), 1e-9)
+                remaining_capacity[assigned_uav] -= vnf.required_cycles / affinity
+                mapping.append(assigned_uav)
+            chosen_tasks_with_map.append(
+                (ue_id, sfc, np.asarray(mapping, dtype=np.int32))
+            )
+            picked_ue_ids.add(ue_id)
 
         num_picked = len(chosen_tasks_with_map)
         # ==========================================================
@@ -1357,6 +1397,11 @@ class SFCEnv(gym.Env):
 
         for i, ue in enumerate(self.ues):
             assigned_type = current_type_list[i]
+            # Derive every UE task generator from Gymnasium's seeded RNG.
+            # Without this, UENode.default_rng() makes reset(seed=...) non-reproducible.
+            ue.rng = np.random.default_rng(
+                int(self.np_random.integers(0, np.iinfo(np.int64).max))
+            )
 
             if is_overfit:
                 # 过拟合测试：固定 UE 在地图中心偏右上一点

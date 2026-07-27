@@ -10,6 +10,7 @@ import wandb
 
 # 导入环境
 from core.sfc_env import SFCEnv
+from core.env_config import DEFAULT_CONFIG
 
 # 导入新定义的策略和特征提取器
 from algos.diffusion_sac_agent import DiffusionSACAgent
@@ -117,7 +118,9 @@ def get_flat_config(cfg: dict | DictConfig) -> dict:
     :param cfg: 从config.yaml读取的原始配置字典/DictConfig
     :return: 扁平化后的环境参数字典
     """
-    flat_config = {}
+    # Keep the environment defaults available to both SFCEnv and policy
+    # construction; Hydra files only override the values they explicitly set.
+    flat_config = DEFAULT_CONFIG.copy()
 
     # 合并环境参数
     if "env" in cfg:
@@ -359,7 +362,9 @@ def main(cfg: DictConfig):
         )
     else:
         # 如果是原生 SAC/PPO，回退到默认设置
-        policy_class = "MlpPolicy"
+        # SFCEnv exposes a Dict observation (state + mobility bounds).
+        # SB3 baselines must therefore use the matching multi-input policy.
+        policy_class = "MultiInputPolicy"
         policy_kwargs = {}
     # --- D. 统一实例化 ---
     model = AlgoClass(

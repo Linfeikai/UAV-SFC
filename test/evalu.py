@@ -21,8 +21,6 @@ def smart_heuristic_policy(env):
     维度: N*2(移动) + K(挑选) + K*L*2(逐VNF部署意图)。
     """
     K, L, M, N = env.K, env.L, env.M, env.N
-    W = env.config["GROUND_WIDTH"]
-    H = env.config["GROUND_HEIGHT"]
     gpu_vnfs = env.config.get("GPU_VNFS", set())
     uav_types = env.config.get("UAV_TYPES", None)
     gpu_ids = [i for i in range(N) if uav_types is not None and uav_types[i] == "gpu"]
@@ -46,24 +44,16 @@ def smart_heuristic_policy(env):
         dist = np.linalg.norm(diff) + 1e-9
         mobility_actions.extend(diff / dist)
 
-    # --- B. Pick：最紧急的前 K 个 ---
+    # --- B. Tasks are selected by urgency inside the environment ---
     num_valid = len(env.current_cand_tasks)
-    pick_actions = []
-    for k in range(K):
-        if k < num_valid:
-            raw_pick = (k / (M + 1)) * 2 - 1 + 0.001
-        else:
-            raw_pick = (M / (M + 1)) * 2 - 1 + 0.001
-        pick_actions.append(raw_pick)
 
     # --- C. Place：逐 VNF 拆分 + 亲和感知 ---
     dt = env.time_slot - env.dt_fly
     caps = np.array([u.cpu_freq * dt for u in env.uavs], dtype=np.float64)
     used = np.zeros(N)
-    place_intent_actions = []
+    place_logits = np.full((K, L, N), -1.0, dtype=np.float32)
     for k in range(K):
         if k >= num_valid:
-            place_intent_actions.extend([0.0, 0.0] * L)
             continue
         ue_id, sfc = env.current_cand_tasks[k]
         ue_loc = env.ues[ue_id].loc
@@ -84,14 +74,9 @@ def smart_heuristic_policy(env):
                         best_score, best = score, u
                 aff = env._vnf_affinity(best, vnf)
                 used[best] += vnf.required_cycles / max(aff, 1e-9)
-                tx = env.uavs[best].loc
-                place_intent_actions.extend([(tx[0] / W) * 2 - 1, (tx[1] / H) * 2 - 1])
-            else:
-                place_intent_actions.extend([0.0, 0.0])
+                place_logits[k, l, best] = 1.0
 
-    return np.concatenate(
-        [mobility_actions, pick_actions, place_intent_actions]
-    ).astype(np.float32)
+    return np.concatenate([mobility_actions, place_logits.flatten()]).astype(np.float32)
 
 
 class HeuristicEvaluator:

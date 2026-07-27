@@ -205,21 +205,17 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     # 【核心插入】：Wandb 动作流形与越界监控 (白盒化诊断)
                     # -------------------------------------------------------------
                     dim_mob = self.actor.n_uavs * 2
-                    dim_pick = self.actor.decision_tasks
 
                     # 切片分解动作 (注意此时 next_actions 已经是 [-1, 1] 范围)
                     mob_acts = next_actions[:, :dim_mob]
-                    pick_acts = next_actions[:, dim_mob : dim_mob + dim_pick]
-                    place_acts = next_actions[:, dim_mob + dim_pick :]
+                    place_acts = next_actions[:, dim_mob:]
 
                     # 计算越界率
                     mob_hit_rate = (mob_acts.abs() > 0.95).float().mean().item()
-                    pick_hit_rate = (pick_acts.abs() > 0.95).float().mean().item()
                     place_hit_rate = (place_acts.abs() > 0.95).float().mean().item()
 
                     # 💡 直接使用 SB3 的 logger Wandb 会自动把它们抓取上去
                     self.logger.record("Action_Boundary/Mobility_HitRate", mob_hit_rate)
-                    self.logger.record("Action_Boundary/Pick_HitRate", pick_hit_rate)
                     self.logger.record("Action_Boundary/Place_HitRate", place_hit_rate)
 
                     # 2. 直方图属于 Wandb 独有高级对象，必须单独发送
@@ -229,10 +225,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                                 "Action_Dist/1_Mobility": wandb.Histogram(
                                     mob_acts.cpu().numpy()
                                 ),
-                                "Action_Dist/2_Pick": wandb.Histogram(
-                                    pick_acts.cpu().numpy()
-                                ),
-                                "Action_Dist/3_Place": wandb.Histogram(
+                                "Action_Dist/2_Place": wandb.Histogram(
                                     place_acts.cpu().numpy()
                                 ),
                                 "global_step": self.num_timesteps,
@@ -291,7 +284,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                 # 计算Critic的MSE损失
                 critic_loss = 0.5 * sum(F.mse_loss(q, next_q_value) for q in qf_values)
                 assert isinstance(critic_loss, th.Tensor)
-            critic_losses.append(float(critic_loss))
+            critic_losses.append(critic_loss.detach().item())
 
             # 优化Critic
             self.critic.optimizer.zero_grad()

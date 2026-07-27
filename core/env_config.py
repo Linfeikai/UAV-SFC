@@ -125,6 +125,9 @@ DEFAULT_CONFIG = {
     "GRID_RES": GRID_RES,
     "MAX_VNF_LEN": MAX_VNF_LEN,
     "RECORD_DEPLOYMENT": False,
+    # Apply mobility_bounds inside the environment so algorithms without a
+    # custom masked actor (e.g. vanilla SAC) can use the same safety transform.
+    "APPLY_MOBILITY_MASK_IN_ENV": False,
     # 过载机制：True=超载任务硬砍丢弃(旧)；False=处理器共享竞争延迟(默认)
     "USE_HARD_CAP": False,
     # --- VNF↔UAV 亲和(异构加速)机制 ---
@@ -161,6 +164,9 @@ DEFAULT_CONFIG = {
     "RWD_SUCCESS": RWD_SUCCESS,
     "RWD_LINK_BROKEN": RWD_LINK_BROKEN,
     "RWD_LATENCY_BONUS": RWD_LATENCY_BONUS,
+    # Optional dense charging-navigation shaping. Zero preserves old behavior.
+    "RWD_LOW_BATTERY_DISTANCE": 0.0,
+    "LOW_BATTERY_SHAPING_THRESHOLD": 0.30,
     "RWD_CRASH": RWD_CRASH,
     "W_ENERGY": RWD_W_ENERGY,
     "W_CHARGE": RWD_W_CHARGE,

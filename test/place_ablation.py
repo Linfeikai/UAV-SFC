@@ -125,21 +125,13 @@ PLACE_FNS = {
 # ---------------------------------------------------------------------------
 def _build_action(env, place_matrix):
     N, K, L = env.N, env.K, env.L
-    W, H = env.config["GROUND_WIDTH"], env.config["GROUND_HEIGHT"]
-
     mob = _mobility_actions(env)
-    pick = _pick_actions(env)
-
-    place_intent = np.zeros((K, L, 2), dtype=np.float32)
+    place_logits = np.full((K, L, N), -1.0, dtype=np.float32)
     for k in range(K):
         for l in range(L):
-            uav_id = place_matrix[k, l]
-            ux, uy = env.uavs[uav_id].loc
-            # 把 UAV 坐标反归一化回 [-1,1]，使 step 的最近邻映射精确命中该 UAV
-            place_intent[k, l, 0] = (ux / W) * 2 - 1
-            place_intent[k, l, 1] = (uy / H) * 2 - 1
+            place_logits[k, l, int(place_matrix[k, l])] = 1.0
 
-    return np.concatenate([mob, pick, place_intent.flatten()]).astype(np.float32)
+    return np.concatenate([mob, place_logits.flatten()]).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------

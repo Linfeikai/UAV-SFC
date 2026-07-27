@@ -1,6 +1,6 @@
 # conf/config.yaml
 defaults:
-  - env: level2        
+  - env: heterogeneous
   - uav: embedded      
   - reward: balanced   
   - _self_             

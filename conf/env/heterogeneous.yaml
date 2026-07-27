@@ -1,0 +1,10 @@
+# CPU-validated primary research environment.
+UAV_TYPES:
+  - gpu
+  - general
+  - gpu
+  - general
+NON_GPU_SLOWDOWN: 4.0
+USE_HARD_CAP: false
+APPLY_MOBILITY_MASK_IN_ENV: false
+

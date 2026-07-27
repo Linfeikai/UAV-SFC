@@ -95,8 +95,10 @@ class LaserCharger:
             E_harvest = scaled_power * charge_time
 
             # 5. 更新无人机电量
-            uav.receive_energy(E_harvest)
-            return E_harvest
+            # Return the energy actually stored, not the theoretical incident
+            # energy. This avoids rewarding/logging charge that was clipped by
+            # the battery capacity (for example while already near full).
+            return float(uav.receive_energy(E_harvest))
         else:
             return 0.0
 

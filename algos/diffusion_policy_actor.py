@@ -242,9 +242,6 @@ class DiffusionPolicyActor(BasePolicy):
         mob_masks = features[:, masks_start : masks_start + self.n_uavs * 4].view(
             B, self.n_uavs, 4
         )
-        pick_limit = features[
-            :, masks_start + self.n_uavs * 4 : masks_start + self.n_uavs * 4 + 1
-        ]
 
         # --- A. 向量化处理 Mobility (0-7 维) ---
         # Step 1: 将 8 维展成 [Batch, n_uavs, 2] -> 分离出 (vx, vy)
@@ -265,14 +262,6 @@ class DiffusionPolicyActor(BasePolicy):
 
         # 将修改后的部分刷回 new_x0 (reshape 会保持内存视图一致)
         new_x0[:, : self.n_uavs * 2] = mobility_part.reshape(B, -1)
-        # --- B. Pick 处理 (8-13 维) ---
-        p_start = 2 * self.n_uavs
-        p_end = p_start + self.decision_tasks
-        picks = new_x0[:, p_start:p_end]
-        # 修正：使用 minimum/maximum 解决 Tensor 边界报错
-        picks = torch.maximum(picks, torch.tensor(-1.0, device=picks.device))
-        new_x0[:, p_start:p_end] = torch.minimum(picks, pick_limit)
-
         return new_x0
 
     def _sample_from_noise(
