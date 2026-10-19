@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from core import uav as flight_physics
 from gymnasium import spaces
 from typing import Tuple, Dict, Any, List
 from torch import Tensor
@@ -177,6 +178,7 @@ class DiffusionPolicyActor(BasePolicy):
         placement_use_post_mobility_geometry: bool = True,
         mobility_scale_x: float = 0.04,
         mobility_scale_y: float = 0.04,
+        mobility_dynamics: dict | None = None,
         placement_embedding_dim: int = 16,
         mobility_policy: str = "diffusion",
         detach_placement_for_rl: bool = False,
@@ -218,6 +220,11 @@ class DiffusionPolicyActor(BasePolicy):
         )
         self.mobility_scale_x = mobility_scale_x
         self.mobility_scale_y = mobility_scale_y
+        self.mobility_dynamics = dict(
+            max_speed=20.0, acceleration=(5.0, 5.0), dt=1.0,
+            min_safe_distance=10.0, battery_capacity=30000.0, env_mask=False,
+        )
+        self.mobility_dynamics.update(mobility_dynamics or {})
         self.placement_embedding_dim = placement_embedding_dim
         self.mobility_policy = mobility_policy.lower()
         self.detach_placement_for_rl = detach_placement_for_rl
@@ -302,6 +309,7 @@ class DiffusionPolicyActor(BasePolicy):
             ),
             mobility_scale_x=self.mobility_scale_x,
             mobility_scale_y=self.mobility_scale_y,
+            mobility_dynamics=self.mobility_dynamics,
             placement_embedding_dim=self.placement_embedding_dim,
             mobility_policy=self.mobility_policy,
             detach_placement_for_rl=self.detach_placement_for_rl,
@@ -320,16 +328,73 @@ class DiffusionPolicyActor(BasePolicy):
             batch_size, self.n_uavs, 10
         )
         uav_positions = uav_state[:, :, :2]
-        if mobility_action is None:
-            mobility = torch.zeros_like(uav_positions)
-        else:
+        # None means explicitly pre-mobility geometry, whereas a zero action
+        # still integrates the UAV's existing velocity.
+        predicted_positions = uav_positions
+        if mobility_action is not None:
+            dynamics = self.mobility_dynamics
+            dt = dynamics["dt"]
+            max_speed = dynamics["max_speed"]
             mobility = mobility_action[:, : self.mobility_dim].reshape(
                 batch_size, self.n_uavs, 2
             )
-        scale = state.new_tensor([self.mobility_scale_x, self.mobility_scale_y])
-        predicted_positions = torch.clamp(
-            uav_positions + mobility * scale.view(1, 1, 2), 0.0, 1.0
-        )
+            if dynamics["env_mask"]:
+                bounds = obs["mobility_bounds"].reshape(batch_size, self.n_uavs, 4)
+                mask = torch.stack((
+                    torch.where(mobility[:, :, 0] >= 0, bounds[:, :, 1], bounds[:, :, 0]),
+                    torch.where(mobility[:, :, 1] >= 0, bounds[:, :, 3], bounds[:, :, 2]),
+                ), dim=-1)
+                mobility = mobility * mask
+            initial_velocity = uav_state[:, :, 2:4] * max_speed
+            velocity = initial_velocity + mobility * state.new_tensor(
+                dynamics["acceleration"]
+            ) * dt
+            speed = torch.linalg.vector_norm(velocity, dim=-1, keepdim=True)
+            velocity = velocity * (max_speed / speed.clamp_min(1e-9)).clamp(max=1.0)
+            average_velocity = (initial_velocity + velocity) / 2.0
+
+            # Mirror the environment's low-energy hover fallback. The discrete
+            # gate is intentional; gradients still flow through feasible moves.
+            v = torch.linalg.vector_norm(average_velocity, dim=-1)
+            power = (
+                flight_physics.P0 * (1 + 3 * v.square() / flight_physics.U_tip**2)
+                + flight_physics.P1 * (
+                    1 + v**4 / (4 * flight_physics.v_0**4)
+                    - v.square() / (2 * flight_physics.v_0**2)
+                ).clamp_min(0).sqrt()
+                + 0.5 * flight_physics.d_0 * flight_physics.rho
+                * flight_physics.s * flight_physics.A * v**3
+            )
+            battery = uav_state[:, :, 4] * dynamics["battery_capacity"]
+            hover_energy = (flight_physics.P0 + flight_physics.P1) * dt
+            hover = (battery < power * dt) & (battery >= hover_energy)
+            average_velocity = torch.where(
+                hover.unsqueeze(-1), torch.zeros_like(average_velocity), average_velocity
+            )
+            scale = state.new_tensor([self.mobility_scale_x, self.mobility_scale_y])
+            predicted_positions = (
+                uav_positions + average_velocity * dt * scale / max_speed
+            ).clamp(0.0, 1.0)
+            # The environment returns before any motion when even hovering fails.
+            critical = (battery < hover_energy).any(dim=1)
+            predicted_positions = torch.where(
+                critical[:, None, None], uav_positions, predicted_positions
+            )
+            # Match the environment's ordered pairwise collision/freeze rule.
+            map_size = max_speed / scale
+            for i in range(self.n_uavs):
+                for j in range(i + 1, self.n_uavs):
+                    distance = torch.linalg.vector_norm(
+                        (predicted_positions[:, i] - predicted_positions[:, j]) * map_size,
+                        dim=-1,
+                    )
+                    collision = distance < dynamics["min_safe_distance"]
+                    pair = torch.zeros(self.n_uavs, device=state.device, dtype=torch.bool)
+                    pair[i] = pair[j] = True
+                    predicted_positions = torch.where(
+                        collision[:, None, None] & pair[None, :, None],
+                        uav_positions, predicted_positions,
+                    )
 
         candidate_offset = state.shape[1] - 3 - self.m_candidates * 5
         candidate_positions = state[

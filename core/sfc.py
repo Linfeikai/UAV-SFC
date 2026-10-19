@@ -26,7 +26,7 @@ class SFC:
 
     # 状态追踪
     current_vnf_index: int = 0  # 当前处理到第几个 VNF 了
-    status: int = 0  # 0:未完成, 1:成功, 2:失败/丢弃
+    status: int = 0  # 0:未完成, 1:成功, -1:超时, -2:坠毁失败
     finished_time: float = 0.0
 
     @property

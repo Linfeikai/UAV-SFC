@@ -15,6 +15,7 @@ import wandb
 # 导入环境
 from core.sfc_env import SFCEnv
 from core.env_config import DEFAULT_CONFIG
+from core.uav import UAVNode
 
 # 导入新定义的策略和特征提取器
 from algos.diffusion_sac_agent import DiffusionSACAgent
@@ -383,6 +384,14 @@ def main(cfg: DictConfig):
             mobility_scale_y=float(
                 flat_config["UAV_MAX_SPEED"] / flat_config["GROUND_HEIGHT"]
             ),
+            mobility_dynamics=dict(
+                max_speed=float(flat_config["UAV_MAX_SPEED"]),
+                acceleration=UAVNode.MAX_ACCELERATION.reshape(-1).tolist(),
+                dt=float(flat_config["DT_FLY"]),
+                min_safe_distance=float(flat_config["UAV_MIN_SAFE_DISTANCE"]),
+                battery_capacity=float(flat_config["BATTERY_CAPACITY"]),
+                env_mask=bool(flat_config.get("APPLY_MOBILITY_MASK_IN_ENV", False)),
+            ),
             mobility_policy=(
                 "gaussian" if algo_str == "GAUSSIAN" else "diffusion"
             ),
@@ -410,6 +419,9 @@ def main(cfg: DictConfig):
     warmup_steps = cfg.get("warmup_steps", 0)
     expert_observations = []
     expert_actions = []
+    if warmup_steps > 0 and not hasattr(model, "replay_buffer"):
+        print(f"[Warmup] {algo_str} has no replay buffer; skipping replay warmup.")
+        warmup_steps = 0
     if warmup_steps > 0:
         print(
             f"\n🔥 [预热开始] 目标: {warmup_steps} 步 (正在适配 n_envs={n_envs} 的并行 Buffer)..."
@@ -446,6 +458,7 @@ def main(cfg: DictConfig):
 
                 next_obs, reward, terminated, truncated, info = temp_env.step(action)
                 done = terminated or truncated
+                info["TimeLimit.truncated"] = truncated and not terminated
 
                 obs_batch.append(obs)
                 next_obs_batch.append(next_obs)
@@ -482,7 +495,8 @@ def main(cfg: DictConfig):
 
         for temp_env in temp_envs:
             temp_env.close()
-        print(f"✅ 预热完成！Buffer 当前实际存储条数: {model.replay_buffer.size()}")
+        stored_transitions = model.replay_buffer.size() * model.replay_buffer.n_envs
+        print(f"✅ 预热完成！Buffer 当前实际存储转移数: {stored_transitions}")
 
     bc_steps = int(cfg.get("bc_pretrain_steps", 0))
     if bc_steps > 0 and expert_observations:

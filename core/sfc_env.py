@@ -9,6 +9,7 @@ from .uav import UAVNode, calculate_uav_power
 from .sfc import SFC
 from .uenode import UENode
 from .laser_charger import LaserCharger
+from .execution import simulate_execution
 # from .charger import Charger
 
 
@@ -46,7 +47,9 @@ class SFCEnv(gym.Env):
         self.chargers: list[LaserCharger] = []  # 初始化 充电桩 列表
         self._create_entities()
         self.time_slot = self.config["TIME_SLOT_DURATION"]
-        self.dt_fly = 1.0  # 假设每次飞行时间为 1s
+        self.dt_fly = float(self.config["DT_FLY"])
+        if not 0 < self.dt_fly < self.time_slot:
+            raise ValueError("DT_FLY must lie strictly between 0 and TIME_SLOT_DURATION")
         self.current_time = 0.0
         self.current_cand_tasks = []  # 当前 Slot 候选任务列表
         # 注意：_create_entities 已经创建并填充 self.uavs / self.ues 列表
@@ -254,7 +257,7 @@ class SFCEnv(gym.Env):
                 - is_crashed: bool (是否发生坠毁)
                 - out_of_bound_count: int (可选，越界次数)
         Args:
-            mobility_act (np.ndarray): 形状 (num_uavs, 2) 的数组，表示每个 UAV 在 x 和 y 方向上的速度指令，范围 [-1, 1]。
+            mobility_act (np.ndarray): 形状 (num_uavs, 2) 的数组，表示每个 UAV 在 x 和 y 方向上的加速度控制量，范围 [-1, 1]。
         """
         # Optionally enforce the same directional mobility mask used by the
         # Diffusion actor. This provides a fair safety-enabled baseline for
@@ -275,7 +278,7 @@ class SFCEnv(gym.Env):
             "crashed_uavs": [],
         }
         # 1. 动作解析 (Action Parsing)
-        # 将 [-1, 1] 映射到 [-MAX_SPEED, MAX_SPEED]
+        # 将 [-1, 1] 映射到加速度，再积分得到末速度与位移
         # a.获取uav最开始的速度 [4,2]
         initial_velocities = np.array([u.velocity for u in self.uavs])
         # b.计算速度变化率 [4,2]
@@ -342,6 +345,7 @@ class SFCEnv(gym.Env):
         # 将所有应该悬停的位置设置为 [0.0, 0.0]
         # 注意：需要将 (N,) 的布尔掩码扩展为 (N, 2) 才能应用于 (N, 2) 数组
         average_velocities[should_hover_mask] = 0.0
+        simulated_velocities[should_hover_mask] = 0.0
 
         # 4. 对电量不足以悬停的 UAVs，留空处理
 
@@ -367,6 +371,8 @@ class SFCEnv(gym.Env):
             dtype=np.float32,
         )
         clamped_locs = np.clip(proposed_locs, 0, map_upper)
+        # Stop outward velocity components at a hard map boundary.
+        simulated_velocities[proposed_locs != clamped_locs] = 0.0
         # 4.碰撞检测：如果两者相撞，都回到原来的位置 not moved
         # 这里要增加penalty！！告诉agent你不能让两个uav碰撞
         collision_mask = np.zeros(self.N, dtype=bool)
@@ -384,6 +390,8 @@ class SFCEnv(gym.Env):
                     final_locs[j] = uav_current_locs[j]  # Freeze
                     average_velocities[i] = 0.0
                     average_velocities[j] = 0.0
+                    simulated_velocities[i] = 0.0
+                    simulated_velocities[j] = 0.0
                     V_avg_magnitude[i] = 0.0
                     V_avg_magnitude[j] = 0.0
 
@@ -391,7 +399,7 @@ class SFCEnv(gym.Env):
         # 需要更新位置、然后计算能量消耗
         for i in range(self.N):
             energy_consumed = self.uavs[i].moveto(
-                final_locs[i], average_velocities[i], V_avg_magnitude[i], self.dt_fly
+                final_locs[i], simulated_velocities[i], V_avg_magnitude[i], self.dt_fly
             )
             flight_info["energy_cost"] += energy_consumed
             if self.uavs[i].is_crashed:
@@ -629,7 +637,7 @@ class SFCEnv(gym.Env):
 
         # --- B. 群体硬上限检查 ---
         # 硬砍模式：超载任务直接丢弃（旧机制，可通过 config 保留用于对照）。
-        # 软竞争模式（默认）：不丢弃，改由 _evaluate_performance 里的排队竞争
+        # 软竞争模式（默认）：不丢弃，改由 simulate_execution 中的 CPU 竞争
         # 延迟来体现过载后果——过载 -> 变慢 -> 可能超时，惩罚渐进且可归因到具体部署。
         if self.config.get("USE_HARD_CAP", False):
             dropped_by_cap = self._hard_cap_drop_sfcs(pre_eligible_tasks)
@@ -656,80 +664,25 @@ class SFCEnv(gym.Env):
     def _account_resource_usage(
         self, eligible_tasks: list[tuple[int, SFC, np.ndarray]]
     ):
+        """Assigned effective CPU demand, used only for load diagnostics.
+
+        Actual CPU time and transfer energy come from simulate_execution;
+        unscheduled/expired VNFs must not be billed as completed work.
         """
-        资源账单统计：计算每个 UAV 承载的总计算负载和总传输能耗需求。
-
-        Args:
-            eligible_tasks: 通过准入控制的合格任务列表 [(ue_id, sfc, mapping), ...]
-
-        Returns:
-            usage_stats: 字典，包含：
-                - uav_total_cycles: np.array (N,) 每个 UAV 被分配的总周期
-                - uav_tx_energy_bill: np.array (N,) 每个 UAV 需支付的传输能耗 (J)
-                - task_mappings: dict {ue_id: mapping} 方便后续阶段查询
-        """
-        # 1. 初始化统计容器
-        uav_total_cycles = np.zeros(self.N, dtype=np.float32)
-        uav_tx_energy_bill = np.zeros(self.N, dtype=np.float32)
-        task_mappings = {}
-
-        # 获取传输功率配置 (0.5W)
-        P_TX_CROSS = self.config["UAV_P_TX_CROSS"]
-
-        # 2. 遍历每一个合格任务
-        for ue_id, sfc, vnf_uav_map in eligible_tasks:
-            task_mappings[ue_id] = vnf_uav_map
-
-            # 遍历 SFC 中的每一个 VNF
-            for vnf_idx, uav_id in enumerate(vnf_uav_map):
-                vnf = sfc.vnf_chain[vnf_idx]
-
-                # --- A. 累加计算负载(有效 cycles = 名义/亲和，放错加速器则占用更多) ---
-                uav_total_cycles[uav_id] += vnf.required_cycles / self._vnf_affinity(
-                    uav_id, vnf
+        uav_total_cycles = np.zeros(self.N, dtype=np.float64)
+        for _, sfc, mapping in eligible_tasks:
+            for vnf, uav_id in zip(sfc.vnf_chain, mapping):
+                uav_total_cycles[uav_id] += (
+                    vnf.required_cycles / self._vnf_affinity(uav_id, vnf)
                 )
-
-                # --- B. 累加传输能耗 (如果涉及跨机传输) ---
-                # 只有当不是最后一个 VNF，且下一跳在不同 UAV 上时，才产生 Backhaul 能耗
-                if vnf_idx < len(vnf_uav_map) - 1:
-                    next_uav_id = vnf_uav_map[vnf_idx + 1]
-
-                    if uav_id != next_uav_id:
-                        # 获取当前 UAV 和下一跳 UAV
-                        uav_curr = self.uavs[uav_id]
-                        uav_next = self.uavs[next_uav_id]
-
-                        # 计算跨机传输速率 (UAV-to-UAV)
-                        rate = self._calculate_rate(
-                            uav_curr.loc,
-                            uav_next.loc,
-                            p_tx=P_TX_CROSS,
-                            link_type="UAV_UAV",
-                        )
-
-                        # 防御性：避免速率过低导致能耗计算爆炸
-                        rate = max(float(rate), 1e-9)
-
-                        # 传输时间 = 数据量(bits) / 速率(bps)
-                        t_tx = vnf.data_out / rate
-                        # 传输能耗 = 功率(W) * 时间(s)
-                        e_tx = P_TX_CROSS * t_tx
-
-                        # 记在发送方 (uav_id) 的账上
-                        uav_tx_energy_bill[uav_id] += e_tx
-
-        return {
-            "uav_total_cycles": uav_total_cycles,
-            "uav_tx_energy_bill": uav_tx_energy_bill,
-            "task_mappings": task_mappings,
-        }
+        return {"uav_total_cycles": uav_total_cycles}
 
     def _bill_uav_energy(self, usage_stats):
         """
         能量结算：执行电量扣除。
 
         Args:
-            usage_stats: 包含 uav_total_cycles, uav_tx_energy_bill 的字典
+            usage_stats: 包含 uav_total_cycles, uav_busy_time, uav_tx_energy_bill 的字典
 
         Returns:
             billing_report: 字典，包含：
@@ -738,7 +691,6 @@ class SFCEnv(gym.Env):
                 - crashed_uav_ids: list 坠毁的 UAV 索引
         """
         # 1. 基础参数准备
-        uav_total_cycles = usage_stats["uav_total_cycles"]
         uav_tx_energy_bill = usage_stats["uav_tx_energy_bill"]
 
         dt_compute = self.time_slot - self.dt_fly
@@ -762,9 +714,8 @@ class SFCEnv(gym.Env):
                 continue
 
             # A. 计算计算能耗 (E = P * t)
-            # 实际忙碌时间 = 总周期 / 频率，但一个 slot 内 UAV 最多只能计算
-            # dt_compute 秒（过载时任务变慢而非无限延长机时），故钳制上限。
-            busy_time = min(uav_total_cycles[uav_id] / uav.cpu_freq, dt_compute)
+            # Event scheduling measures actual CPU time, including deadline cancellation.
+            busy_time = float(usage_stats["uav_busy_time"][uav_id])
             e_comp = FULL_LOAD_POWER * busy_time
             uav_compute_energy[uav_id] = e_comp
 
@@ -784,159 +735,39 @@ class SFCEnv(gym.Env):
             "crashed_uav_ids": crashed_uav_ids,
         }
 
-    def _handle_billing_crash(self, billing_info, eligible_tasks):
-        """
-        结算坠毁处理：当 UAV 在计算/传输过程中耗尽电量时，清理受影响的任务并给予惩罚。
-
-        Args:
-            billing_report: 包含 crashed_uav_ids, uav_compute_energy 的字典
-            eligible_tasks: 准入阶段通过的候选任务列表
-
-        Returns:
-            与 _process_sfc_tasks 结构一致的结算字典
-        """
+    def _evaluate_performance(self, eligible_tasks, execution, billing_report):
+        """Settle every admitted task, including survivors of a billing crash."""
         rewards = np.zeros(self.ue_num, dtype=np.float32)
-        # 专门统计因坠毁导致的失败数
-        crash_failed_count = 0
-        crashed_uav_ids = set(billing_info["crashed_uav_ids"])
-
-        for ue_id, sfc, mapping in eligible_tasks:
-            # 检查任务路径中是否有坠毁的 UAV
-            if not set(mapping).isdisjoint(crashed_uav_ids):
-                # 【关键修改】：使用专门的链路中断惩罚
+        completed = timeouts = crash_failed = 0
+        latency_sum = 0.0
+        crashed = set(billing_report["crashed_uav_ids"])
+        for task_id, (ue_id, sfc, mapping) in enumerate(eligible_tasks):
+            duration = float(execution["finish_times"][task_id])
+            if not crashed.isdisjoint(mapping):
                 rewards[ue_id] += self.config["RWD_LINK_BROKEN"]
-                crash_failed_count += 1
-
-                if self.ues[ue_id].task_buffer:
-                    self.ues[ue_id].task_buffer.popleft()
-                    sfc.status = -2  # 状态码：因坠毁中断
-
-        total_compute = float(np.sum(billing_info["uav_compute_energy"]))
-
-        return {
-            "rewards": rewards,
-            "completed_count": 0,
-            "dropped_count": 0,  # 此阶段不产生准入丢弃
-            "timeout_count": 0,  # 此阶段不产生普通超时
-            "crash_failed_count": crash_failed_count,  # 新增统计项
-            "failed_count": crash_failed_count,
-            "avg_latency": 0.0,
-            "total_compute_energy": total_compute,
-            "total_tx_energy": 0.0,
-            "uav_crashed": True,
-            "crashed_uavs": list(crashed_uav_ids),
-        }
-
-    def _evaluate_performance(self, eligible_tasks, usage_stats, billing_report):
-        """
-        性能与奖励评估：计算每个 SFC 的实际延迟，判定成功/失败，并生成奖励。
-
-        Args:
-            eligible_tasks: 通过准入的候选任务列表
-            usage_stats: 包含 task_mappings 等统计信息
-            billing_report: 包含 结算信息
-
-        Returns:
-            sfc_results: 包含 rewards(array), completed_count, failed_count, avg_latency 等
-        """
-        # 1. 基础参数准备
-        rewards = np.zeros(self.ue_num, dtype=np.float32)
-        completed_count = 0
-        timeout_count = 0
-        total_latency_sum = 0.0
-
-        P_TX_CROSS = self.config["UAV_P_TX_CROSS"]
-        P_UPLINK = self.config["P_UPLINK"]
-
-        # --- 处理器共享(processor-sharing)竞争因子 ---
-        # 一架 UAV 本 slot 被分配的总周期 W 若超过其容量 C，则其上每个 VNF 的
-        # 计算时间被拉长 max(1, W/C) 倍：负载越挤，算得越慢，可能因此超时。
-        # 这取代了旧的"超载即硬砍"，让部署决策的好坏平滑、可归因地反映到延迟上。
-        dt_compute_window = self.time_slot - self.dt_fly
-        uav_total_cycles = usage_stats["uav_total_cycles"]
-        cap_cycles = np.array(
-            [u.cpu_freq * dt_compute_window for u in self.uavs], dtype=np.float64
-        )
-        contention = np.maximum(1.0, uav_total_cycles / (cap_cycles + 1e-9))
-
-        # 2. 逐一评估任务 (只有通过了准入和容量检查的任务才会到这里)
-        for ue_id, sfc, mapping in eligible_tasks:
-            ue = self.ues[ue_id]
-            current_delay = 0.0
-
-            # --- A. 上行延迟 (UE -> 第一个 UAV) ---
-            first_uav_id = mapping[0]
-            first_uav = self.uavs[first_uav_id]
-            rate_up = self._calculate_rate(
-                ue.loc, first_uav.loc, P_UPLINK, link_type="UAV_UE"
-            )
-            rate_up = max(float(rate_up), 1e-9)
-            t_up = sfc.vnf_chain[0].data_in / rate_up
-            current_delay += t_up
-
-            # --- B. 链式处理与传输延迟 ---
-            for vnf_idx, uav_id in enumerate(mapping):
-                vnf = sfc.vnf_chain[vnf_idx]
-
-                # 1. 计算处理延迟（含处理器共享竞争减速 + VNF↔UAV 亲和减速）
-                t_comp = vnf.required_cycles / (
-                    self.uavs[uav_id].cpu_freq * self._vnf_affinity(uav_id, vnf)
-                )
-                t_comp *= contention[uav_id]
-                current_delay += t_comp
-
-                # 2. 跨 UAV 传输延迟 (如果有下一跳)
-                if vnf_idx < len(mapping) - 1:
-                    next_uav_id = mapping[vnf_idx + 1]
-                    if uav_id != next_uav_id:
-                        uav_curr = self.uavs[uav_id]
-                        uav_next = self.uavs[next_uav_id]
-                        rate_cross = self._calculate_rate(
-                            uav_curr.loc, uav_next.loc, P_TX_CROSS, link_type="UAV_UAV"
-                        )
-                        rate_cross = max(float(rate_cross), 1e-9)
-                        t_trans = vnf.data_out / rate_cross
-                        current_delay += t_trans
-
-            # --- C. 结果结算 ---
-            # 实际完成绝对时间 = 当前 Slot 开始时间(已加飞行1s) + 任务处理总延迟
-            finish_time = self.current_time + current_delay
-
-            # 判定是否满足 Deadline
-            if finish_time <= sfc.deadline:
-                # 成功！
+                sfc.status = -2
+                crash_failed += 1
+            elif np.isfinite(duration):
+                sfc.finished_time = self.current_time + duration
+                actual_duration = sfc.finished_time - sfc.arrival_time
+                allowed = max(sfc.deadline - sfc.arrival_time, 1e-9)
+                ratio = np.clip(actual_duration / allowed, 0.0, 1.0)
                 rewards[ue_id] += self.config["RWD_SUCCESS"]
-
-                # 计算时延奖励 (Latency Bonus)
-                actual_duration = finish_time - sfc.arrival_time
-                max_allowed_duration = sfc.deadline - sfc.arrival_time
-                ratio = np.clip(actual_duration / max_allowed_duration, 0.0, 1.0)
-
-                bonus_weight = self.config.get("RWD_LATENCY_BONUS", 5.0)
-                rewards[ue_id] += bonus_weight * (1.0 - ratio)
-
-                completed_count += 1
-                total_latency_sum += actual_duration
-                sfc.status = 1  # Success
+                rewards[ue_id] += self.config.get("RWD_LATENCY_BONUS", 5.0) * (1 - ratio)
+                sfc.status = 1
+                completed += 1
+                latency_sum += actual_duration
             else:
-                # 这里的超时归因于：上行/跨机传输太慢，或者估计误差（不再是排队）
                 rewards[ue_id] += self.config["RWD_TIMEOUT"]
-                timeout_count += 1
-                sfc.status = -1  # Failed
-
-            # 任务处理结束，移出缓冲区
-            ue.task_buffer.popleft()
-
-        # 3. 统计汇总
-        avg_latency = (
-            total_latency_sum / completed_count if completed_count > 0 else 0.0
-        )
-
+                sfc.status = -1
+                timeouts += 1
+            self.ues[ue_id].task_buffer.popleft()
         return {
             "rewards": rewards,
-            "completed_count": completed_count,
-            "timeout_count": timeout_count,
-            "avg_latency": float(avg_latency),
+            "completed_count": completed,
+            "timeout_count": timeouts,
+            "crash_failed_count": crash_failed,
+            "avg_latency": latency_sum / completed if completed else 0.0,
         }
 
     def _process_sfc_tasks(self, chosen_tasks):
@@ -967,6 +798,8 @@ class SFCEnv(gym.Env):
         # 2. 资源统计 (Resource Accounting)
         # 统计每个 UAV 承载的总计算量和传输能耗需求
         usage_stats = self._account_resource_usage(eligible_tasks)
+        execution = simulate_execution(self, eligible_tasks)
+        usage_stats.update(execution)
 
         # 3. 能量结算 (Energy Billing & Crash Check)
         # 真正扣除 UAV 电池，处理因计算/传输导致的坠毁
@@ -974,25 +807,14 @@ class SFCEnv(gym.Env):
         res["total_compute_energy"] = float(np.sum(billing_info["uav_compute_energy"]))
         res["total_tx_energy"] = float(np.sum(usage_stats["uav_tx_energy_bill"]))
 
-        # 如果结算阶段发现有 UAV 坠毁，提前中止（Short-circuit）
-        if billing_info["uav_crashed"]:
-            # 这里失败是电量没规划好，计算+传输电量不够了
-            crash_res = self._handle_billing_crash(billing_info, eligible_tasks)
-            res["rewards"] += crash_res["rewards"]
-            res["crash_failed_count"] = crash_res["crash_failed_count"]
-            res["failed_count"] += crash_res["crash_failed_count"]
-            res["uav_crashed"] = True
-            res["crashed_uavs"] = billing_info["crashed_uav_ids"]
-        else:
-            # 正常评估
-            eval_res = self._evaluate_performance(
-                eligible_tasks, usage_stats, billing_info
-            )
-            res["rewards"] += eval_res["rewards"]
-            res["completed_count"] = eval_res["completed_count"]
-            res["timeout_count"] = eval_res["timeout_count"]
-            res["failed_count"] += eval_res["timeout_count"]
-            res["avg_latency"] = eval_res["avg_latency"]
+        # A crash only invalidates paths using the dead UAV; settle other paths too.
+        eval_res = self._evaluate_performance(eligible_tasks, execution, billing_info)
+        res["rewards"] += eval_res["rewards"]
+        for key in ("completed_count", "timeout_count", "crash_failed_count", "avg_latency"):
+            res[key] = eval_res[key]
+        res["failed_count"] += eval_res["timeout_count"] + eval_res["crash_failed_count"]
+        res["uav_crashed"] = billing_info["uav_crashed"]
+        res["crashed_uavs"] = billing_info["crashed_uav_ids"]
 
         return res
 
@@ -1141,7 +963,19 @@ class SFCEnv(gym.Env):
             truncated = False
 
             # 填充 info (可以把 flight_info 放进去)
-            info = {**step_stats, "perf/crashed": 1.0, **flight_info}
+            for ue in self.ues:
+                for task in ue.task_buffer:
+                    task.status = -2
+                ue.task_buffer.clear()
+            self.current_cand_tasks = []
+            info = {
+                **step_stats, **flight_info, "perf/crashed": 1.0,
+                "total_available": total_tasks_on_table, "actually_picked": 0,
+                "crash_failed_count": total_tasks_on_table,
+                "failed_count": total_tasks_on_table, "unpicked_count": 0,
+                "total_compute_energy": 0.0, "total_tx_energy": 0.0,
+                "total_energy_J": float(flight_info["energy_cost"]),
+            }
 
             return self._get_obs(), reward, terminated, truncated, info
 
@@ -1229,14 +1063,25 @@ class SFCEnv(gym.Env):
         sfc_results["gpu_vnf_count"] = int(gpu_vnf_count)
         sfc_results["gpu_vnf_on_gpu"] = int(gpu_vnf_on_gpu)
 
-        # If a UAV died during billing, _process_sfc_tasks will short-circuit
-        # and set 'uav_crashed'. Handle termination and crash penalty here
+        # All admitted tasks have been settled, even if billing killed a UAV.
+        # Handle termination and the crash reward override here
         # centrally in `step()` so episode control remains in one place.
         if sfc_results.get("uav_crashed", False):
             reward = self.config["RWD_CRASH"]
             terminated = True
             truncated = False
-            info = {**sfc_results, **charge_info, "perf/crashed": 1.0}
+            remaining = sum(len(ue.task_buffer) for ue in self.ues)
+            for ue in self.ues:
+                for task in ue.task_buffer:
+                    task.status = -2
+                ue.task_buffer.clear()
+            self.current_cand_tasks = []
+            sfc_results["crash_failed_count"] += remaining
+            sfc_results["failed_count"] += remaining
+            sfc_results["unpicked_count"] = remaining
+            nominal_reward, reward_info = self._calculate_reward(sfc_results, flight_info)
+            reward_info["r_crash_override"] = float(reward - nominal_reward)
+            info = {**sfc_results, **charge_info, **reward_info, "perf/crashed": 1.0}
             return self._get_obs(), reward, terminated, truncated, info
         # 清理未选中的候选任务 1/22 15：34 ：先不做惩罚了，只清理任务
         num_unpicked = 0
@@ -1484,7 +1329,7 @@ class SFCEnv(gym.Env):
         self.current_time = 0.0
         self.current_step = 0
         # --- 【同步统计】：重置时各 UE 已经生成了第一波任务，需要计入总数 ---
-        initial_gen_count = sum(1 for ue in self.ues if ue.task_buffer)
+        initial_gen_count = sum(len(ue.task_buffer) for ue in self.ues)
         self.total_gen_tasks = initial_gen_count
         self.current_step_gen = initial_gen_count
 

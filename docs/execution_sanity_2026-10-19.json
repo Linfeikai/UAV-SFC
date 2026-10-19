@@ -1,0 +1,101 @@
+{
+  "seed": 42,
+  "episodes": 3,
+  "max_steps": 64,
+  "results": [
+    {
+      "policy": "random",
+      "episodes": [
+        {
+          "seed": 42,
+          "steps": 40,
+          "reward": 220.8084257926678,
+          "crashed": false,
+          "available": 411,
+          "completed": 80,
+          "dropped": 305,
+          "timeout": 26,
+          "crash_failed": 0
+        },
+        {
+          "seed": 43,
+          "steps": 40,
+          "reward": 311.39920757424375,
+          "crashed": false,
+          "available": 398,
+          "completed": 107,
+          "dropped": 271,
+          "timeout": 20,
+          "crash_failed": 0
+        },
+        {
+          "seed": 44,
+          "steps": 40,
+          "reward": 335.20212649362287,
+          "crashed": false,
+          "available": 397,
+          "completed": 113,
+          "dropped": 271,
+          "timeout": 13,
+          "crash_failed": 0
+        }
+      ],
+      "totals": {
+        "available": 1206,
+        "completed": 300,
+        "dropped": 847,
+        "timeout": 59,
+        "crash_failed": 0
+      },
+      "success_rate_pct": 24.875621890547265,
+      "mean_reward": 289.13658662017815
+    },
+    {
+      "policy": "heuristic",
+      "episodes": [
+        {
+          "seed": 42,
+          "steps": 37,
+          "reward": 553.5057949445043,
+          "crashed": true,
+          "available": 379,
+          "completed": 196,
+          "dropped": 164,
+          "timeout": 8,
+          "crash_failed": 11
+        },
+        {
+          "seed": 43,
+          "steps": 40,
+          "reward": 581.399180113169,
+          "crashed": false,
+          "available": 398,
+          "completed": 190,
+          "dropped": 196,
+          "timeout": 12,
+          "crash_failed": 0
+        },
+        {
+          "seed": 44,
+          "steps": 40,
+          "reward": 557.3727455853088,
+          "crashed": true,
+          "available": 397,
+          "completed": 197,
+          "dropped": 186,
+          "timeout": 11,
+          "crash_failed": 3
+        }
+      ],
+      "totals": {
+        "available": 1174,
+        "completed": 583,
+        "dropped": 546,
+        "timeout": 31,
+        "crash_failed": 14
+      },
+      "success_rate_pct": 49.65928449744463,
+      "mean_reward": 564.0925735476607
+    }
+  ]
+}

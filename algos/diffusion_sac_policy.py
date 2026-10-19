@@ -64,6 +64,7 @@ class DiffusionSACPolicy(BasePolicy):
         placement_use_post_mobility_geometry: bool = True,
         mobility_scale_x: float = 0.04,
         mobility_scale_y: float = 0.04,
+        mobility_dynamics: Optional[dict] = None,
         mobility_policy: str = "diffusion",
         detach_placement_for_rl: bool = False,
         **kwargs: Any,
@@ -114,6 +115,7 @@ class DiffusionSACPolicy(BasePolicy):
         )
         self.mobility_scale_x = mobility_scale_x
         self.mobility_scale_y = mobility_scale_y
+        self.mobility_dynamics = mobility_dynamics
         self.mobility_policy = mobility_policy
         self.detach_placement_for_rl = detach_placement_for_rl
 
@@ -148,6 +150,7 @@ class DiffusionSACPolicy(BasePolicy):
                 ),
                 "mobility_scale_x": self.mobility_scale_x,
                 "mobility_scale_y": self.mobility_scale_y,
+                "mobility_dynamics": self.mobility_dynamics,
                 "mobility_policy": self.mobility_policy,
                 "detach_placement_for_rl": self.detach_placement_for_rl,
             }
