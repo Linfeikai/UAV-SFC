@@ -151,14 +151,22 @@ class SFCEnv(gym.Env):
         mob_low = np.zeros((self.N, 4), dtype=np.float32)
         mob_high = np.ones((self.N, 4), dtype=np.float32)
 
-        self.observation_space = spaces.Dict(
-            {
-                "state": spaces.Box(low=low_state, high=high_state, dtype=np.float32),
-                "mobility_bounds": spaces.Box(
-                    low=0.0, high=1.0, shape=(self.N * 4,), dtype=np.float32
-                ),
-            }
-        )
+        observation_spaces = {
+            "state": spaces.Box(low=low_state, high=high_state, dtype=np.float32),
+            "mobility_bounds": spaces.Box(
+                low=0.0, high=1.0, shape=(self.N * 4,), dtype=np.float32
+            ),
+        }
+        if self.config.get("EXPOSE_PLACEMENT_CONTEXT", False):
+            # Last channel is a valid-VNF flag. The first N channels contain
+            # effective compute demand divided by each UAV's slot capacity.
+            observation_spaces["placement_context"] = spaces.Box(
+                low=0.0,
+                high=np.finfo(np.float32).max,
+                shape=(self.K * self.L * (self.N + 1),),
+                dtype=np.float32,
+            )
+        self.observation_space = spaces.Dict(observation_spaces)
 
     def _create_entities(self):
         """创建 UAV、UE 和 充电桩 实例"""
@@ -1145,6 +1153,18 @@ class SFCEnv(gym.Env):
             [uav.cpu_freq * (self.time_slot - self.dt_fly) for uav in self.uavs],
             dtype=np.float64,
         )
+        initial_capacity = remaining_capacity.copy()
+        affinity_bias = float(self.config.get("PLACEMENT_AFFINITY_BIAS", 0.0))
+        load_bias = float(self.config.get("PLACEMENT_LOAD_BIAS", 0.0))
+        distance_bias = float(self.config.get("PLACEMENT_DISTANCE_BIAS", 0.0))
+        map_diagonal = max(
+            np.hypot(self.config["GROUND_WIDTH"], self.config["GROUND_HEIGHT"]),
+            1e-9,
+        )
+        affinity_sum = 0.0
+        placement_count = 0
+        gpu_vnf_count = 0
+        gpu_vnf_on_gpu = 0
         for k in range(min(K, len(self.current_cand_tasks))):
             ue_id, sfc = self.current_cand_tasks[k]
             if ue_id in picked_ue_ids:
@@ -1155,6 +1175,20 @@ class SFCEnv(gym.Env):
                 for uav_id, uav in enumerate(self.uavs):
                     if uav.is_crashed:
                         logits[uav_id] = -np.inf
+                        continue
+                    affinity = max(self._vnf_affinity(uav_id, vnf), 1e-9)
+                    logits[uav_id] += affinity_bias * np.log(affinity)
+                    logits[uav_id] += load_bias * (
+                        remaining_capacity[uav_id]
+                        / max(initial_capacity[uav_id], 1e-9)
+                    )
+                    source_loc = (
+                        self.ues[ue_id].loc
+                        if not mapping
+                        else self.uavs[mapping[-1]].loc
+                    )
+                    distance = np.linalg.norm(uav.loc - source_loc) / map_diagonal
+                    logits[uav_id] -= distance_bias * distance
                 ranked_uavs = np.argsort(logits)[::-1]
                 assigned_uav = int(ranked_uavs[0])
                 for uav_id in ranked_uavs:
@@ -1166,6 +1200,13 @@ class SFCEnv(gym.Env):
                 affinity = max(self._vnf_affinity(assigned_uav, vnf), 1e-9)
                 remaining_capacity[assigned_uav] -= vnf.required_cycles / affinity
                 mapping.append(assigned_uav)
+                affinity_sum += affinity
+                placement_count += 1
+                if vnf.vnf_type in self.config.get("GPU_VNFS", set()):
+                    gpu_vnf_count += 1
+                    uav_types = self.config.get("UAV_TYPES")
+                    if uav_types is not None and uav_types[assigned_uav] == "gpu":
+                        gpu_vnf_on_gpu += 1
             chosen_tasks_with_map.append(
                 (ue_id, sfc, np.asarray(mapping, dtype=np.int32))
             )
@@ -1179,6 +1220,14 @@ class SFCEnv(gym.Env):
 
         # 4. 执行部署 (Placement with Masking)
         sfc_results = self._process_sfc_tasks(chosen_tasks_with_map)
+        # Attach diagnostics before the billing-crash early return so failed
+        # terminal steps are not silently excluded from evaluation.
+        sfc_results["total_available"] = total_tasks_on_table
+        sfc_results["actually_picked"] = num_picked
+        sfc_results["placement_affinity_sum"] = float(affinity_sum)
+        sfc_results["placement_count"] = int(placement_count)
+        sfc_results["gpu_vnf_count"] = int(gpu_vnf_count)
+        sfc_results["gpu_vnf_on_gpu"] = int(gpu_vnf_on_gpu)
 
         # If a UAV died during billing, _process_sfc_tasks will short-circuit
         # and set 'uav_crashed'. Handle termination and crash penalty here
@@ -1624,9 +1673,24 @@ class SFCEnv(gym.Env):
         # 获取实时动作遮罩参数
         mask_params = self.get_action_mask_params()
 
-        return {
+        observation = {
             "state": state_vector,
             "mobility_bounds": mask_params[
                 "mobility_bounds"
             ].flatten(),  # 展平为 16 维 (4 UAVs * 4)
         }
+        if self.config.get("EXPOSE_PLACEMENT_CONTEXT", False):
+            context = np.zeros((self.K, self.L, self.N + 1), dtype=np.float32)
+            slot_duration = max(self.time_slot - self.dt_fly, 1e-9)
+            for k, (_, sfc) in enumerate(cand_tasks[: self.K]):
+                for l, vnf in enumerate(sfc.vnf_chain[: self.L]):
+                    for uav_id, uav in enumerate(self.uavs):
+                        affinity = max(self._vnf_affinity(uav_id, vnf), 1e-9)
+                        capacity = max(uav.cpu_freq * slot_duration, 1e-9)
+                        context[k, l, uav_id] = min(
+                            vnf.required_cycles / affinity / capacity,
+                            np.finfo(np.float32).max,
+                        )
+                    context[k, l, self.N] = 1.0
+            observation["placement_context"] = context.flatten()
+        return observation

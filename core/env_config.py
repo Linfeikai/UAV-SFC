@@ -141,6 +141,14 @@ DEFAULT_CONFIG = {
         "Encoder", "FeatureExtraction", "AnomalyDetection",
     },
     "NON_GPU_SLOWDOWN": 4.0,
+    # Optional structured priors added to policy placement logits. Zero keeps
+    # the original learned decoder exactly unchanged.
+    "PLACEMENT_AFFINITY_BIAS": 0.0,
+    "PLACEMENT_LOAD_BIAS": 0.0,
+    "PLACEMENT_DISTANCE_BIAS": 0.0,
+    # Expose per-VNF, per-UAV normalized compute requirements to hybrid
+    # categorical placement policies. Disabled to preserve old checkpoints.
+    "EXPOSE_PLACEMENT_CONTEXT": False,
     # 通信
     "BANDWIDTH_HZ": BANDWIDTH_HZ,
     "P_UPLINK": P_UPLINK,

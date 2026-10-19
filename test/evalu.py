@@ -51,7 +51,9 @@ def smart_heuristic_policy(env):
     dt = env.time_slot - env.dt_fly
     caps = np.array([u.cpu_freq * dt for u in env.uavs], dtype=np.float64)
     used = np.zeros(N)
-    place_logits = np.full((K, L, N), -1.0, dtype=np.float32)
+    # Only rank matters to the environment. Keeping expert logits away from
+    # tanh's boundary makes them substantially easier to imitate in BC.
+    place_logits = np.full((K, L, N), -0.5, dtype=np.float32)
     for k in range(K):
         if k >= num_valid:
             continue
@@ -74,7 +76,7 @@ def smart_heuristic_policy(env):
                         best_score, best = score, u
                 aff = env._vnf_affinity(best, vnf)
                 used[best] += vnf.required_cycles / max(aff, 1e-9)
-                place_logits[k, l, best] = 1.0
+                place_logits[k, l, best] = 0.5
 
     return np.concatenate([mobility_actions, place_logits.flatten()]).astype(np.float32)
 

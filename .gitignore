@@ -33,6 +33,10 @@ __pycache__/
 env/
 venv/
 ENV/
+!conf/env/
+conf/env/*
+!conf/env/heterogeneous_structured.yaml
+!conf/env/heterogeneous_hybrid.yaml
 
 # --- 操作系统与 IDE ---
 .DS_Store

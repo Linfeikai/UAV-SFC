@@ -5,6 +5,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import math
 from gymnasium import spaces
 from typing import Tuple, Dict, Any, List
@@ -169,6 +170,18 @@ class DiffusionPolicyActor(BasePolicy):
         entropy_scale: float = 1.0,  # 用于熵代理的缩放系数
         t_min: float = 1e-3,  # 积分区间的下界
         t_max: float = 1.0 - 1e-3,  # 积分区间的上界
+        hybrid_categorical_placement: bool = False,
+        categorical_temperature: float = 0.7,
+        placement_prior_scale: float = 1.0,
+        relational_placement: bool = False,
+        placement_use_post_mobility_geometry: bool = True,
+        mobility_scale_x: float = 0.04,
+        mobility_scale_y: float = 0.04,
+        placement_embedding_dim: int = 16,
+        mobility_policy: str = "diffusion",
+        detach_placement_for_rl: bool = False,
+        gaussian_log_std_min: float = -5.0,
+        gaussian_log_std_max: float = 2.0,
         **kwargs,
     ):
         super().__init__(
@@ -182,6 +195,8 @@ class DiffusionPolicyActor(BasePolicy):
             raise ValueError("DiffusionPolicyActor 要求动作空间为 spaces.Box。")
 
         self.action_dim = action_space.shape[0]
+        self.mobility_dim = n_uavs * 2
+        self.placement_dim = self.action_dim - self.mobility_dim
         self.features_dim = features_dim
         self.n_uavs = n_uavs
         self.m_candidates = m_candidates
@@ -194,13 +209,68 @@ class DiffusionPolicyActor(BasePolicy):
         self.t_min = t_min
         self.t_max = t_max
         self.net_arch = net_arch  # <-- 新增这行，存下来
+        self.hybrid_categorical_placement = hybrid_categorical_placement
+        self.categorical_temperature = categorical_temperature
+        self.placement_prior_scale = placement_prior_scale
+        self.relational_placement = relational_placement
+        self.placement_use_post_mobility_geometry = (
+            placement_use_post_mobility_geometry
+        )
+        self.mobility_scale_x = mobility_scale_x
+        self.mobility_scale_y = mobility_scale_y
+        self.placement_embedding_dim = placement_embedding_dim
+        self.mobility_policy = mobility_policy.lower()
+        self.detach_placement_for_rl = detach_placement_for_rl
+        self.gaussian_log_std_min = gaussian_log_std_min
+        self.gaussian_log_std_max = gaussian_log_std_max
+        if self.mobility_policy not in {"diffusion", "gaussian"}:
+            raise ValueError(f"Unsupported mobility policy: {mobility_policy}")
+
+        placement_slots = self.decision_tasks * self.n_uavs
+        if self.placement_dim % placement_slots != 0:
+            raise ValueError("Placement action dimension is not divisible by K*N")
+        self.max_vnf_len = self.placement_dim // placement_slots
 
         hidden_dim = net_arch[0] if net_arch else 256
-        self._epsilon_net = _EpsilonNet(
-            state_dim=self.core_features_dim,  # 只把核心特征传给 epsilon_net
-            action_dim=self.action_dim,
-            hidden_dim=hidden_dim,
-        )
+        if self.mobility_policy == "diffusion":
+            self._epsilon_net = _EpsilonNet(
+                state_dim=self.core_features_dim,
+                action_dim=(
+                    self.mobility_dim
+                    if hybrid_categorical_placement
+                    else self.action_dim
+                ),
+                hidden_dim=hidden_dim,
+            )
+        else:
+            if not hybrid_categorical_placement:
+                raise ValueError("Gaussian mobility requires categorical placement")
+            self.gaussian_mobility_net = nn.Sequential(
+                nn.Linear(self.core_features_dim, hidden_dim),
+                nn.Mish(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.Mish(),
+                nn.Linear(hidden_dim, 2 * self.mobility_dim),
+            )
+        if self.hybrid_categorical_placement:
+            placement_input_dim = self.core_features_dim + 3 * self.n_uavs + 1
+            if self.relational_placement:
+                placement_input_dim += (
+                    self.n_uavs + 2 * self.placement_embedding_dim
+                )
+                self.task_embedding = nn.Embedding(
+                    self.decision_tasks, self.placement_embedding_dim
+                )
+                self.vnf_embedding = nn.Embedding(
+                    self.max_vnf_len, self.placement_embedding_dim
+                )
+            self.placement_net = nn.Sequential(
+                nn.Linear(placement_input_dim, hidden_dim),
+                nn.Mish(),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.Mish(),
+                nn.Linear(hidden_dim, self.n_uavs),
+            )
 
         diffusion_schedule = _precompute_diffusion_schedule(self.T)
         for key, value in diffusion_schedule.items():
@@ -223,8 +293,283 @@ class DiffusionPolicyActor(BasePolicy):
             entropy_scale=self.entropy_scale,
             t_min=self.t_min,
             t_max=self.t_max,
+            hybrid_categorical_placement=self.hybrid_categorical_placement,
+            categorical_temperature=self.categorical_temperature,
+            placement_prior_scale=self.placement_prior_scale,
+            relational_placement=self.relational_placement,
+            placement_use_post_mobility_geometry=(
+                self.placement_use_post_mobility_geometry
+            ),
+            mobility_scale_x=self.mobility_scale_x,
+            mobility_scale_y=self.mobility_scale_y,
+            placement_embedding_dim=self.placement_embedding_dim,
+            mobility_policy=self.mobility_policy,
+            detach_placement_for_rl=self.detach_placement_for_rl,
+            gaussian_log_std_min=self.gaussian_log_std_min,
+            gaussian_log_std_max=self.gaussian_log_std_max,
         )
         return data
+
+    def _relational_geometry(
+        self, obs: PyTorchObs, mobility_action: torch.Tensor | None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Predict post-action UAV positions and read candidate UE positions."""
+        state = obs["state"]
+        batch_size = state.shape[0]
+        uav_state = state[:, : self.n_uavs * 10].reshape(
+            batch_size, self.n_uavs, 10
+        )
+        uav_positions = uav_state[:, :, :2]
+        if mobility_action is None:
+            mobility = torch.zeros_like(uav_positions)
+        else:
+            mobility = mobility_action[:, : self.mobility_dim].reshape(
+                batch_size, self.n_uavs, 2
+            )
+        scale = state.new_tensor([self.mobility_scale_x, self.mobility_scale_y])
+        predicted_positions = torch.clamp(
+            uav_positions + mobility * scale.view(1, 1, 2), 0.0, 1.0
+        )
+
+        candidate_offset = state.shape[1] - 3 - self.m_candidates * 5
+        candidate_positions = state[
+            :, candidate_offset : candidate_offset + self.m_candidates * 5
+        ].reshape(batch_size, self.m_candidates, 5)[:, :, :2]
+        return predicted_positions, candidate_positions
+
+    def _placement_network_input(
+        self,
+        core: torch.Tensor,
+        requirements: torch.Tensor,
+        remaining: torch.Tensor,
+        previous: torch.Tensor,
+        valid: torch.Tensor,
+        source_position: torch.Tensor | None,
+        predicted_positions: torch.Tensor | None,
+        task_index: int,
+        vnf_index: int,
+    ) -> torch.Tensor:
+        parts = [core, requirements, remaining, previous, valid]
+        if self.relational_placement:
+            if source_position is None or predicted_positions is None:
+                raise ValueError("Relational placement requires predicted geometry")
+            distances = torch.linalg.vector_norm(
+                predicted_positions - source_position.unsqueeze(1), dim=2
+            ) / math.sqrt(2.0)
+            batch_size = core.shape[0]
+            task_ids = torch.full(
+                (batch_size,), task_index, device=core.device, dtype=torch.long
+            )
+            vnf_ids = torch.full(
+                (batch_size,), vnf_index, device=core.device, dtype=torch.long
+            )
+            parts.extend(
+                [distances, self.task_embedding(task_ids), self.vnf_embedding(vnf_ids)]
+            )
+        return torch.cat(parts, dim=1)
+
+    def sample_placement(
+        self,
+        obs: PyTorchObs,
+        features: torch.Tensor | None = None,
+        mobility_action: torch.Tensor | None = None,
+        deterministic: bool = False,
+        straight_through: bool = True,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Generate sequential feasible categorical VNF placements.
+
+        The returned Box-compatible scores are +1 for the selected UAV and -1
+        for alternatives. Gradients use the straight-through Gumbel estimator.
+        """
+        if not self.hybrid_categorical_placement:
+            raise RuntimeError("Categorical placement is disabled for this actor")
+        if not isinstance(obs, dict) or "placement_context" not in obs:
+            raise ValueError("Hybrid placement requires placement_context observations")
+        if features is None:
+            features = self.extract_features(obs, self.features_extractor)
+
+        batch_size = features.shape[0]
+        core = features[:, : self.core_features_dim]
+        context = obs["placement_context"].reshape(
+            batch_size,
+            self.decision_tasks,
+            self.max_vnf_len,
+            self.n_uavs + 1,
+        )
+        state = obs["state"]
+        crashed = torch.stack(
+            [state[:, uav_id * 10 + 5] > 0.5 for uav_id in range(self.n_uavs)],
+            dim=1,
+        )
+        remaining = torch.ones(
+            (batch_size, self.n_uavs), device=features.device, dtype=features.dtype
+        )
+        previous = torch.zeros_like(remaining)
+        encoded_actions = []
+        log_probs = []
+        entropies = []
+        predicted_positions = None
+        candidate_positions = None
+        if self.relational_placement:
+            predicted_positions, candidate_positions = self._relational_geometry(
+                obs,
+                (
+                    mobility_action
+                    if self.placement_use_post_mobility_geometry
+                    else None
+                ),
+            )
+
+        for k in range(self.decision_tasks):
+            previous = torch.zeros_like(remaining)
+            source_position = (
+                candidate_positions[:, k] if candidate_positions is not None else None
+            )
+            for l in range(self.max_vnf_len):
+                requirements = context[:, k, l, : self.n_uavs]
+                valid = context[:, k, l, self.n_uavs : self.n_uavs + 1]
+                network_input = self._placement_network_input(
+                    core,
+                    requirements,
+                    remaining,
+                    previous,
+                    valid,
+                    source_position,
+                    predicted_positions,
+                    k,
+                    l,
+                )
+                logits = self.placement_net(network_input)
+                logits = logits - self.placement_prior_scale * torch.log(
+                    requirements.clamp_min(1e-6)
+                )
+
+                feasible = (requirements <= remaining + 1e-6) & ~crashed
+                fallback = ~crashed
+                no_feasible = ~feasible.any(dim=1, keepdim=True)
+                feasible = torch.where(no_feasible, fallback, feasible)
+                no_live_uav = ~feasible.any(dim=1, keepdim=True)
+                feasible = torch.where(no_live_uav, torch.ones_like(feasible), feasible)
+                masked_logits = logits.masked_fill(~feasible, -1e4)
+                distribution = torch.distributions.Categorical(logits=masked_logits)
+
+                if deterministic:
+                    indices = masked_logits.argmax(dim=1)
+                    selected = F.one_hot(indices, self.n_uavs).to(features.dtype)
+                elif straight_through:
+                    selected = F.gumbel_softmax(
+                        masked_logits,
+                        tau=self.categorical_temperature,
+                        hard=True,
+                    )
+                    indices = selected.argmax(dim=1)
+                else:
+                    indices = distribution.sample()
+                    selected = F.one_hot(indices, self.n_uavs).to(features.dtype)
+
+                active = valid.clamp(0.0, 1.0)
+                selected = selected * active
+                encoded_actions.append((2.0 * selected - 1.0) * active)
+                log_probs.append(distribution.log_prob(indices).unsqueeze(1) * active)
+                entropies.append(distribution.entropy().unsqueeze(1) * active)
+                remaining = torch.clamp(
+                    remaining - selected * requirements, min=0.0
+                )
+                previous = selected
+                if predicted_positions is not None:
+                    source_position = torch.sum(
+                        selected.unsqueeze(2) * predicted_positions, dim=1
+                    )
+
+        actions = torch.cat(encoded_actions, dim=1)
+        valid_count = context[..., self.n_uavs].sum(dim=(1, 2)).clamp_min(1.0)
+        log_prob = torch.cat(log_probs, dim=1).sum(dim=1, keepdim=True)
+        entropy = (
+            torch.cat(entropies, dim=1).sum(dim=1, keepdim=True)
+            / valid_count.unsqueeze(1)
+        )
+        return actions, log_prob, entropy
+
+    def placement_bc_loss(
+        self,
+        obs: PyTorchObs,
+        target_actions: torch.Tensor,
+        mobility_action: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Teacher-forced cross entropy for expert categorical placements."""
+        features = self.extract_features(obs, self.features_extractor)
+        batch_size = features.shape[0]
+        core = features[:, : self.core_features_dim]
+        context = obs["placement_context"].reshape(
+            batch_size,
+            self.decision_tasks,
+            self.max_vnf_len,
+            self.n_uavs + 1,
+        )
+        targets = target_actions[:, self.mobility_dim :].reshape(
+            batch_size, self.decision_tasks, self.max_vnf_len, self.n_uavs
+        ).argmax(dim=-1)
+        state = obs["state"]
+        crashed = torch.stack(
+            [state[:, uav_id * 10 + 5] > 0.5 for uav_id in range(self.n_uavs)], dim=1
+        )
+        remaining = torch.ones_like(context[:, 0, 0, : self.n_uavs])
+        previous = torch.zeros_like(remaining)
+        losses = []
+        predicted_positions = None
+        candidate_positions = None
+        if self.relational_placement:
+            geometry_mobility = (
+                target_actions[:, : self.mobility_dim]
+                if mobility_action is None
+                else mobility_action[:, : self.mobility_dim]
+            )
+            if not self.placement_use_post_mobility_geometry:
+                geometry_mobility = None
+            predicted_positions, candidate_positions = self._relational_geometry(
+                obs, geometry_mobility
+            )
+        for k in range(self.decision_tasks):
+            previous = torch.zeros_like(remaining)
+            source_position = (
+                candidate_positions[:, k] if candidate_positions is not None else None
+            )
+            for l in range(self.max_vnf_len):
+                requirements = context[:, k, l, : self.n_uavs]
+                valid = context[:, k, l, self.n_uavs] > 0.5
+                logits = self.placement_net(
+                    self._placement_network_input(
+                        core,
+                        requirements,
+                        remaining,
+                        previous,
+                        valid.float().unsqueeze(1),
+                        source_position,
+                        predicted_positions,
+                        k,
+                        l,
+                    )
+                )
+                logits = logits - self.placement_prior_scale * torch.log(
+                    requirements.clamp_min(1e-6)
+                )
+                feasible = (requirements <= remaining + 1e-6) & ~crashed
+                fallback = ~crashed
+                feasible = torch.where(
+                    ~feasible.any(dim=1, keepdim=True), fallback, feasible
+                )
+                logits = logits.masked_fill(~feasible, -1e4)
+                if valid.any():
+                    losses.append(F.cross_entropy(logits[valid], targets[:, k, l][valid]))
+                selected = F.one_hot(targets[:, k, l], self.n_uavs).to(features.dtype)
+                selected = selected * valid.float().unsqueeze(1)
+                remaining = torch.clamp(remaining - selected * requirements, min=0.0)
+                previous = selected
+                if predicted_positions is not None:
+                    source_position = torch.sum(
+                        selected.unsqueeze(2) * predicted_positions, dim=1
+                    )
+        return torch.stack(losses).mean() if losses else core.sum() * 0.0
 
     def _apply_ray_mask(
         self, pred_x0: torch.Tensor, features: torch.Tensor
@@ -233,9 +578,7 @@ class DiffusionPolicyActor(BasePolicy):
         分段非对称射线遮罩 (Segmented Asymmetric Ray Mask)
         """
         """修正版：解决 Inplace 梯度破坏与 Clamp Tensor 兼容性"""
-        # 1. 克隆以保护梯度
-        new_x0 = pred_x0.clone()
-        B = new_x0.shape[0]
+        B = pred_x0.shape[0]
 
         # 2. 提取掩码参数 [Batch, n_uavs, 4] -> [L, R, B, T]
         masks_start = self.core_features_dim
@@ -245,7 +588,9 @@ class DiffusionPolicyActor(BasePolicy):
 
         # --- A. 向量化处理 Mobility (0-7 维) ---
         # Step 1: 将 8 维展成 [Batch, n_uavs, 2] -> 分离出 (vx, vy)
-        mobility_part = new_x0[:, : self.n_uavs * 2].reshape(B, self.n_uavs, 2).clone()
+        mobility_part = pred_x0[:, : self.mobility_dim].reshape(
+            B, self.n_uavs, 2
+        )
         vx = mobility_part[:, :, 0]
         vy = mobility_part[:, :, 1]
 
@@ -255,14 +600,15 @@ class DiffusionPolicyActor(BasePolicy):
         # Y轴：vy >= 0 ? Top(索引3) : Bottom(索引2)
         mask_y = torch.where(vy >= 0, mob_masks[:, :, 3], mob_masks[:, :, 2])
 
-        # Step 3: 并行应用缩放
-        # 利用 view 的内存共享机制，直接修改 new_x0 的前 8 位
-        mobility_part[:, :, 0] = vx * mask_x
-        mobility_part[:, :, 1] = vy * mask_y
-
-        # 将修改后的部分刷回 new_x0 (reshape 会保持内存视图一致)
-        new_x0[:, : self.n_uavs * 2] = mobility_part.reshape(B, -1)
-        return new_x0
+        # Keep this transform functional: candidate actions now participate in
+        # the categorical Q-loss graph, so view assignment would invalidate
+        # tensors saved by autograd.
+        masked_mobility = torch.stack([vx * mask_x, vy * mask_y], dim=2).reshape(
+            B, self.mobility_dim
+        )
+        if pred_x0.shape[1] == self.mobility_dim:
+            return masked_mobility
+        return torch.cat([masked_mobility, pred_x0[:, self.mobility_dim :]], dim=1)
 
     def _sample_from_noise(
         self,
@@ -272,7 +618,13 @@ class DiffusionPolicyActor(BasePolicy):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """修正版：统一 DDIM 数学公式与 None 比较逻辑"""
         batch_size = features.shape[0]
-        action_t = torch.randn((batch_size, self.action_dim), device=self.device)
+        # DDIM is deterministic conditional on its initial latent. Keep that
+        # latent sampled so evaluation measures the learned multimodal policy;
+        # callers obtain reproducibility by setting the Torch seed per episode.
+        diffusion_dim = (
+            self.mobility_dim if self.hybrid_categorical_placement else self.action_dim
+        )
+        action_t = torch.randn((batch_size, diffusion_dim), device=self.device)
         step_indices = (
             torch.linspace(self.T - 1, 0, inference_steps, device=self.device)
             .round()
@@ -330,10 +682,71 @@ class DiffusionPolicyActor(BasePolicy):
 
         return action_t, last_noise
 
+    def _sample_gaussian_mobility(
+        self, features: torch.Tensor, deterministic: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Sample tanh-Gaussian mobility and return its corrected log density."""
+        parameters = self.gaussian_mobility_net(
+            features[:, : self.core_features_dim]
+        )
+        mean, log_std = parameters.chunk(2, dim=1)
+        log_std = log_std.clamp(
+            self.gaussian_log_std_min, self.gaussian_log_std_max
+        )
+        distribution = torch.distributions.Normal(mean, log_std.exp())
+        unbounded = mean if deterministic else distribution.rsample()
+        raw_action = torch.tanh(unbounded)
+        # Ray bounds live in normalized action space. Applying them before tanh
+        # can violate the bound when an unconstrained Gaussian mean grows large.
+        action = self._apply_ray_mask(raw_action, features)
+        batch_size = features.shape[0]
+        mobility_bounds = features[
+            :,
+            self.core_features_dim : self.core_features_dim + self.n_uavs * 4,
+        ].reshape(batch_size, self.n_uavs, 4)
+        raw_xy = raw_action.reshape(batch_size, self.n_uavs, 2)
+        scale_x = torch.where(
+            raw_xy[:, :, 0] >= 0,
+            mobility_bounds[:, :, 1],
+            mobility_bounds[:, :, 0],
+        )
+        scale_y = torch.where(
+            raw_xy[:, :, 1] >= 0,
+            mobility_bounds[:, :, 3],
+            mobility_bounds[:, :, 2],
+        )
+        ray_scale = torch.stack([scale_x, scale_y], dim=2).reshape(
+            batch_size, self.mobility_dim
+        )
+        component_log_prob = distribution.log_prob(unbounded)
+        component_log_prob -= torch.log(1.0 - raw_action.square() + 1e-6)
+        movable = ray_scale > 1e-6
+        component_log_prob = torch.where(
+            movable,
+            component_log_prob - torch.log(ray_scale.clamp_min(1e-6)),
+            torch.zeros_like(component_log_prob),
+        )
+        log_prob = component_log_prob.sum(dim=1, keepdim=True)
+        return action, log_prob
+
     def forward(self, obs: PyTorchObs, deterministic: bool = False) -> torch.Tensor:
         features = self.extract_features(obs, self.features_extractor)
-        unbounded_action, _ = self._sample_from_noise(features, deterministic)
-        return torch.tanh(unbounded_action)
+        if self.mobility_policy == "gaussian":
+            mobility_action, _ = self._sample_gaussian_mobility(
+                features, deterministic
+            )
+        else:
+            unbounded_action, _ = self._sample_from_noise(features, deterministic)
+            mobility_action = torch.tanh(unbounded_action)
+        if not self.hybrid_categorical_placement:
+            return mobility_action
+        placement_action, _, _ = self.sample_placement(
+            obs,
+            features=features,
+            mobility_action=mobility_action,
+            deterministic=deterministic,
+        )
+        return torch.cat([mobility_action, placement_action], dim=1)
 
     def _predict(
         self, observation: PyTorchObs, deterministic: bool = False
@@ -350,6 +763,20 @@ class DiffusionPolicyActor(BasePolicy):
         生成动作并计算其对数概率。
         """
         features = self.extract_features(obs, self.features_extractor)
+        if self.mobility_policy == "gaussian":
+            policy_action, log_prob = self._sample_gaussian_mobility(features)
+            placement_action, placement_log_prob, _ = self.sample_placement(
+                obs,
+                features=features,
+                mobility_action=policy_action,
+                deterministic=False,
+            )
+            if self.detach_placement_for_rl:
+                placement_action = placement_action.detach()
+            else:
+                log_prob = log_prob + placement_log_prob
+            return torch.cat([policy_action, placement_action], dim=1), log_prob
+
         unbounded_action, last_noise = self._sample_from_noise(
             features, deterministic=False
         )
@@ -374,6 +801,16 @@ class DiffusionPolicyActor(BasePolicy):
 
         # 3. 最终的对数概率
         log_prob = log_prob_u - squash_correction
+
+        if self.hybrid_categorical_placement:
+            placement_action, placement_log_prob, _ = self.sample_placement(
+                obs,
+                features=features,
+                mobility_action=policy_action,
+                deterministic=False,
+            )
+            policy_action = torch.cat([policy_action, placement_action], dim=1)
+            log_prob = log_prob + placement_log_prob
 
         return policy_action, log_prob
 

@@ -73,6 +73,12 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         policy_kwargs: Optional[Dict[str, Any]] = None,
         qne_temperature: float = 0.5,  # QNE的温度参数，用于控制Softmax的平滑度
         max_grad_norm: float = 1.0,  # <-- 确保有这个参数
+        categorical_q_coef: float = 0.05,
+        categorical_entropy_coef: float = 0.001,
+        categorical_bc_coef: float = 0.0,
+        categorical_bc_batch_size: int = 256,
+        categorical_bc_policy_mobility: bool = False,
+        categorical_bc_policy_mobility_prob: float = 0.0,
         # --- 其他标准参数 ---
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
@@ -113,6 +119,18 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.ent_coef_optimizer: Optional[th.optim.Adam] = None
         self.qne_temperature = qne_temperature
         self.max_grad_norm = max_grad_norm
+        self.categorical_q_coef = categorical_q_coef
+        self.categorical_entropy_coef = categorical_entropy_coef
+        self.categorical_bc_coef = categorical_bc_coef
+        self.categorical_bc_batch_size = categorical_bc_batch_size
+        self.categorical_bc_policy_mobility = categorical_bc_policy_mobility
+        self.categorical_bc_policy_mobility_prob = float(
+            categorical_bc_policy_mobility_prob
+        )
+        if not 0.0 <= self.categorical_bc_policy_mobility_prob <= 1.0:
+            raise ValueError("categorical_bc_policy_mobility_prob must be in [0, 1]")
+        self._expert_observations = None
+        self._expert_actions = None
         self.critic_updates_per_step = 4  # 现在没有使用到
         self.qne_entropy_lambda = 0.001
         self.policy_delay = 2  # Actor 每隔 policy_delay 个 gradient_step 更新一次
@@ -147,6 +165,18 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.actor = self.policy.actor
         self.critic = self.policy.critic
         self.critic_target = self.policy.critic_target
+
+    def set_expert_data(self, observations, actions: np.ndarray) -> None:
+        """Attach expert transitions for online categorical regularization."""
+        if not observations:
+            self._expert_observations = None
+            self._expert_actions = None
+            return
+        self._expert_observations = {
+            key: np.stack([obs[key] for obs in observations]).astype(np.float32)
+            for key in observations[0]
+        }
+        self._expert_actions = np.asarray(actions, dtype=np.float32)
 
     # === NEW: 显式的动作缩放/反缩放，确保策略空间([-1,1])与环境空间一致 ===
     # 它的核心作用是将环境输出的原始物理动作映射到神经网络喜欢的 [-1, 1] 标准空间。
@@ -325,7 +355,12 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     policy_actions_from_buffer = policy_actions_from_buffer.clamp(
                         -1.0 + EPS, 1.0 - EPS
                     )
-                    unbounded_clean_actions = th.atanh(policy_actions_from_buffer)
+                    diffusion_actions_from_buffer = policy_actions_from_buffer
+                    if self.actor.hybrid_categorical_placement:
+                        diffusion_actions_from_buffer = policy_actions_from_buffer[
+                            :, : self.actor.mobility_dim
+                        ]
+                    unbounded_clean_actions = th.atanh(diffusion_actions_from_buffer)
 
                     states_from_buffer = replay_data.observations
 
@@ -355,9 +390,9 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     k_noises = th.randn(
                         batch_size,
                         self.qne_k_samples,
-                        self.actor.action_dim,
+                        unbounded_clean_actions.shape[1],
                         device=self.device,
-                    )  # shape: [B, K, A_dim]
+                    )
 
                     # 使用去噪公式反向生成K个候选的干净动作
                     # 这是一个批处理操作，效率很高
@@ -403,10 +438,6 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                         th.std(policy_k_candidate_actions).item(),
                     )
 
-                    acts_reshaped = policy_k_candidate_actions.reshape(
-                        batch_size * self.qne_k_samples, -1
-                    )
-
                     #    ii. Critic打分
                     if isinstance(states_from_buffer, dict):
                         # 如果是字典（DictReplayBuffer），对每个键值对分别展开
@@ -430,6 +461,23 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                         )
                         states_reshaped = states_expanded.reshape(
                             batch_size * self.qne_k_samples, -1
+                        )
+
+                    acts_reshaped = policy_k_candidate_actions.reshape(
+                        batch_size * self.qne_k_samples, -1
+                    )
+                    placement_entropy = None
+                    if self.actor.hybrid_categorical_placement:
+                        placement_actions, _, placement_entropy = (
+                            self.actor.sample_placement(
+                                states_reshaped,
+                                mobility_action=acts_reshaped,
+                                deterministic=False,
+                                straight_through=True,
+                            )
+                        )
+                        acts_reshaped = th.cat(
+                            [acts_reshaped, placement_actions], dim=1
                         )
 
                     q1 = self.critic.q1_forward(states_reshaped, acts_reshaped)
@@ -496,6 +544,91 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     actor_loss = F.mse_loss(
                         predicted_noise, target_noise.detach()
                     )  # target_noise不反向传播
+                    if self.actor.hybrid_categorical_placement:
+                        q_scale = q_values_k.std(
+                            dim=1, keepdim=True, unbiased=False
+                        ).detach().clamp_min(1.0)
+                        placement_q_loss = -(
+                            softmax_weights.detach() * q_values_k / q_scale
+                        ).sum(dim=1).mean()
+                        mean_placement_entropy = placement_entropy.mean()
+                        actor_loss = (
+                            actor_loss
+                            + self.categorical_q_coef * placement_q_loss
+                            - self.categorical_entropy_coef
+                            * mean_placement_entropy
+                        )
+                        self.logger.record(
+                            "train/categorical_q_loss", placement_q_loss.item()
+                        )
+                        self.logger.record(
+                            "train/categorical_entropy",
+                            mean_placement_entropy.item(),
+                        )
+                        if (
+                            self.categorical_bc_coef > 0
+                            and self._expert_observations is not None
+                            and self._expert_actions is not None
+                        ):
+                            expert_count = len(self._expert_actions)
+                            expert_indices = np.random.randint(
+                                0,
+                                expert_count,
+                                size=min(self.categorical_bc_batch_size, expert_count),
+                            )
+                            expert_obs = {
+                                key: th.as_tensor(
+                                    value[expert_indices],
+                                    dtype=th.float32,
+                                    device=self.device,
+                                )
+                                for key, value in self._expert_observations.items()
+                            }
+                            expert_actions = th.as_tensor(
+                                self._expert_actions[expert_indices],
+                                dtype=th.float32,
+                                device=self.device,
+                            )
+                            placement_mobility = None
+                            policy_mobility_prob = (
+                                1.0
+                                if self.categorical_bc_policy_mobility
+                                else self.categorical_bc_policy_mobility_prob
+                            )
+                            if policy_mobility_prob > 0.0:
+                                with th.no_grad():
+                                    expert_features = self.actor.extract_features(
+                                        expert_obs, self.actor.features_extractor
+                                    )
+                                    mobility_latent, _ = self.actor._sample_from_noise(
+                                        expert_features, deterministic=False
+                                    )
+                                    placement_mobility = th.tanh(mobility_latent)
+                                    if policy_mobility_prob < 1.0:
+                                        use_policy = th.rand(
+                                            (placement_mobility.shape[0], 1),
+                                            device=self.device,
+                                        ) < policy_mobility_prob
+                                        placement_mobility = th.where(
+                                            use_policy,
+                                            placement_mobility,
+                                            expert_actions[
+                                                :, : self.actor.mobility_dim
+                                            ],
+                                        )
+                            categorical_bc_loss = self.actor.placement_bc_loss(
+                                expert_obs,
+                                expert_actions,
+                                mobility_action=placement_mobility,
+                            )
+                            actor_loss = (
+                                actor_loss
+                                + self.categorical_bc_coef * categorical_bc_loss
+                            )
+                            self.logger.record(
+                                "train/categorical_bc_loss",
+                                categorical_bc_loss.item(),
+                            )
                     if self.qne_entropy_lambda > 0:
                         entropy = (
                             -(softmax_weights * (softmax_weights + 1e-8).log())

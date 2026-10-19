@@ -25,6 +25,7 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         self.n_uavs = n_uavs
         self.m_candidates = m_candidates
         self.grid_res = grid_res
+        self.has_placement_context = "placement_context" in observation_space.spaces
 
         # --- 原始状态切片节点 ---
         # 每架 UAV 10 维: [x,y,vx,vy,batt,crashed,dx,dy,load,is_gpu]
@@ -44,8 +45,20 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         # 2. 针对候选任务的 MLP
         self.cand_mlp = nn.Sequential(nn.Linear(self.cand_dim, 64), nn.Mish())
 
+        placement_feature_dim = 0
+        if self.has_placement_context:
+            placement_context_dim = int(
+                observation_space.spaces["placement_context"].shape[0]
+            )
+            self.placement_mlp = nn.Sequential(
+                nn.Linear(placement_context_dim, 64), nn.Mish()
+            )
+            placement_feature_dim = 64
+
         # 3. 特征融合主干 (仅处理 96 维物理状态)
-        total_concat_dim = self.uav_dim + cnn_output_dim + 64 + 3  # 3是global_dim
+        total_concat_dim = (
+            self.uav_dim + cnn_output_dim + 64 + placement_feature_dim + 3
+        )
         self.state_fusion_net = nn.Sequential(
             nn.Linear(total_concat_dim, 256),
             nn.LayerNorm(256),
@@ -77,10 +90,16 @@ class SFCFeaturesExtractor(BaseFeaturesExtractor):
         # --- 2. 局部特征提取 ---
         grid_features = self.grid_cnn(grid_obs)
         cand_features = self.cand_mlp(cand_obs)
+        placement_features = []
+        if self.has_placement_context:
+            placement_features.append(
+                self.placement_mlp(observations["placement_context"])
+            )
 
         # --- 3. 融合核心物理特征 (得到 256 维) ---
         combined_phys_features = torch.cat(
-            [uav_obs, grid_features, cand_features, global_obs], dim=1
+            [uav_obs, grid_features, cand_features, *placement_features, global_obs],
+            dim=1,
         )
         core_features = self.state_fusion_net(combined_phys_features)
 

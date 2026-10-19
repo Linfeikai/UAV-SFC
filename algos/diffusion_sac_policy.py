@@ -57,6 +57,15 @@ class DiffusionSACPolicy(BasePolicy):
         m_candidates: int = 12,  # 候选任务池大小 M
         decision_tasks: int = 6,  # 每步最多决策任务数 K
         core_features_dim: int = 256,  # 用于构建 Actor 的核心特征维度
+        hybrid_categorical_placement: bool = False,
+        categorical_temperature: float = 0.7,
+        placement_prior_scale: float = 1.0,
+        relational_placement: bool = False,
+        placement_use_post_mobility_geometry: bool = True,
+        mobility_scale_x: float = 0.04,
+        mobility_scale_y: float = 0.04,
+        mobility_policy: str = "diffusion",
+        detach_placement_for_rl: bool = False,
         **kwargs: Any,
     ):
         # print(
@@ -96,6 +105,17 @@ class DiffusionSACPolicy(BasePolicy):
         self.m_candidates = m_candidates
         self.decision_tasks = decision_tasks
         self.core_features_dim = core_features_dim
+        self.hybrid_categorical_placement = hybrid_categorical_placement
+        self.categorical_temperature = categorical_temperature
+        self.placement_prior_scale = placement_prior_scale
+        self.relational_placement = relational_placement
+        self.placement_use_post_mobility_geometry = (
+            placement_use_post_mobility_geometry
+        )
+        self.mobility_scale_x = mobility_scale_x
+        self.mobility_scale_y = mobility_scale_y
+        self.mobility_policy = mobility_policy
+        self.detach_placement_for_rl = detach_placement_for_rl
 
         # actor和critic共同的参数
         self.net_args = {
@@ -119,6 +139,17 @@ class DiffusionSACPolicy(BasePolicy):
                 "m_candidates": self.m_candidates,
                 "decision_tasks": self.decision_tasks,
                 "core_features_dim": self.core_features_dim,
+                "hybrid_categorical_placement": self.hybrid_categorical_placement,
+                "categorical_temperature": self.categorical_temperature,
+                "placement_prior_scale": self.placement_prior_scale,
+                "relational_placement": self.relational_placement,
+                "placement_use_post_mobility_geometry": (
+                    self.placement_use_post_mobility_geometry
+                ),
+                "mobility_scale_x": self.mobility_scale_x,
+                "mobility_scale_y": self.mobility_scale_y,
+                "mobility_policy": self.mobility_policy,
+                "detach_placement_for_rl": self.detach_placement_for_rl,
             }
         )
         self.critic_kwargs.update(

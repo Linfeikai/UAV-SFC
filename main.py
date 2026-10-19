@@ -3,7 +3,11 @@ import hydra
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from stable_baselines3 import SAC, PPO
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import (
+    BaseCallback,
+    CallbackList,
+    CheckpointCallback,
+)
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 from stable_baselines3.common.utils import set_random_seed
 import wandb
@@ -14,8 +18,10 @@ from core.env_config import DEFAULT_CONFIG
 
 # 导入新定义的策略和特征提取器
 from algos.diffusion_sac_agent import DiffusionSACAgent
+from algos.gaussian_hybrid_sac_agent import GaussianHybridSACAgent
 from algos.diffusion_sac_policy import DiffusionSACPolicy
 from algos.diffusion_extractor import SFCFeaturesExtractor
+from algos.behavior_cloning import pretrain_actor
 
 from hydra.core.hydra_config import HydraConfig
 
@@ -30,6 +36,7 @@ ALGO_REGISTRY = {
     "PPO": PPO,
     "SAC": SAC,
     "DIFFUSION": DiffusionSACAgent,  # <--- 注册你的新算法
+    "GAUSSIAN": GaussianHybridSACAgent,
 }
 
 
@@ -339,7 +346,7 @@ def main(cfg: DictConfig):
     AlgoClass = ALGO_REGISTRY[algo_str]
     # 获取对应算法的超参数，并将其转换为普通的 Python 字典
     algo_params = dict(cfg.get(algo_str.lower(), {}))
-    if algo_str == "DIFFUSION":
+    if algo_str in {"DIFFUSION", "GAUSSIAN"}:
         # 如果是扩散模型，使用专属的 Policy 和 特征提取器图纸
         policy_class = DiffusionSACPolicy
 
@@ -359,6 +366,27 @@ def main(cfg: DictConfig):
             share_features_extractor=True,
             T=20,  # Actor 的扩散步数
             net_arch=[256, 256],
+            hybrid_categorical_placement=bool(
+                cfg.get("hybrid_categorical_placement", False)
+            ),
+            categorical_temperature=float(
+                cfg.get("categorical_temperature", 0.7)
+            ),
+            placement_prior_scale=float(cfg.get("placement_prior_scale", 1.0)),
+            relational_placement=bool(cfg.get("relational_placement", False)),
+            placement_use_post_mobility_geometry=bool(
+                cfg.get("placement_use_post_mobility_geometry", True)
+            ),
+            mobility_scale_x=float(
+                flat_config["UAV_MAX_SPEED"] / flat_config["GROUND_WIDTH"]
+            ),
+            mobility_scale_y=float(
+                flat_config["UAV_MAX_SPEED"] / flat_config["GROUND_HEIGHT"]
+            ),
+            mobility_policy=(
+                "gaussian" if algo_str == "GAUSSIAN" else "diffusion"
+            ),
+            detach_placement_for_rl=(algo_str == "GAUSSIAN"),
         )
     else:
         # 如果是原生 SAC/PPO，回退到默认设置
@@ -380,6 +408,8 @@ def main(cfg: DictConfig):
     # 🌟 优化后：80/20 混合预热 (启发式 + 随机探索)
     # =======================================================
     warmup_steps = cfg.get("warmup_steps", 0)
+    expert_observations = []
+    expert_actions = []
     if warmup_steps > 0:
         print(
             f"\n🔥 [预热开始] 目标: {warmup_steps} 步 (正在适配 n_envs={n_envs} 的并行 Buffer)..."
@@ -402,8 +432,15 @@ def main(cfg: DictConfig):
 
             for env_idx, temp_env in enumerate(temp_envs):
                 obs = temp_obs[env_idx]
-                if np.random.random() > 0.2:
+                use_expert = np.random.random() >= cfg.get(
+                    "warmup_random_fraction", 0.2
+                )
+                if use_expert:
                     action = smart_heuristic_policy(temp_env)
+                    expert_observations.append(
+                        {key: value.copy() for key, value in obs.items()}
+                    )
+                    expert_actions.append(action.copy())
                 else:
                     action = temp_env.action_space.sample()
 
@@ -447,12 +484,57 @@ def main(cfg: DictConfig):
             temp_env.close()
         print(f"✅ 预热完成！Buffer 当前实际存储条数: {model.replay_buffer.size()}")
 
+    bc_steps = int(cfg.get("bc_pretrain_steps", 0))
+    if bc_steps > 0 and expert_observations:
+        print(
+            f"\n[BC] Pretraining {algo_str} actor for {bc_steps} gradient steps "
+            f"from {len(expert_observations)} expert transitions..."
+        )
+        bc_stats = pretrain_actor(
+            model,
+            expert_observations,
+            np.asarray(expert_actions, dtype=np.float32),
+            gradient_steps=bc_steps,
+            batch_size=int(cfg.get("bc_batch_size", 256)),
+            learning_rate=float(cfg.get("bc_learning_rate", 1e-4)),
+            mobility_dims=flat_config["NUM_UAVS"] * 2,
+            mobility_weight=float(cfg.get("bc_mobility_weight", 0.0)),
+            seed=int(cfg.seed),
+        )
+        print(
+            f"[BC] Loss {bc_stats['initial_loss']:.6f} -> "
+            f"{bc_stats['final_loss']:.6f}"
+        )
+
+    if (
+        cfg.get("hybrid_categorical_placement", False)
+        and hasattr(model, "set_expert_data")
+    ):
+        model.set_expert_data(
+            expert_observations,
+            np.asarray(expert_actions, dtype=np.float32),
+        )
+
     # =======================================================
     # --- E. 训练 ---
     print(f"当前模式: {algo_str} | 总步数: {cfg.total_timesteps}")
+    callbacks = [SFCStatsCallback()]
+    checkpoint_freq = int(cfg.get("checkpoint_freq", 0))
+    if checkpoint_freq > 0:
+        checkpoint_dir = os.path.join(hydra_exp_dir, "checkpoints")
+        callbacks.append(
+            CheckpointCallback(
+                save_freq=max(checkpoint_freq // n_envs, 1),
+                save_path=checkpoint_dir,
+                name_prefix=algo_str,
+            )
+        )
+        print(
+            f"Checkpoint: every {checkpoint_freq} transitions -> {checkpoint_dir}"
+        )
     model.learn(
         total_timesteps=cfg.total_timesteps,
-        callback=SFCStatsCallback(),
+        callback=CallbackList(callbacks),
         tb_log_name=f"{cfg.exp_name}",
     )
 
