@@ -1,0 +1,65 @@
+{
+  "status": "prepared_not_launched",
+  "reason": "The current SSH authentication path is read-only and the prior interactive session rejects input; do not submit this plan until writable access is restored.",
+  "source_commit": "e150a29",
+  "root": "/root/autodl-tmp/UAV-SFC-motion-e150a29",
+  "source_checkpoint": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+  "source_checkpoint_sha256": "2106f25d3f9b2cfcbdb775d2549fb3322aae72ea45ed322adb0053c083720fa2",
+  "output": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_resume_20261020",
+  "steps": 30000,
+  "eval_episodes": 50,
+  "validation_seed": 5000,
+  "validation_episodes": 10,
+  "confirmation_seed": 6000,
+  "max_parallel": 1,
+  "runs": [
+    {
+      "variant": "DIFFUSION_STATIONARY_RESUME",
+      "base_algorithm": "DIFFUSION",
+      "root": "/root/autodl-tmp/UAV-SFC-motion-e150a29",
+      "folder": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_resume_50k_seed42",
+      "run_id": "f3b92a71",
+      "url": "https://wandb.ai/SACtest/diffusion_rl/runs/f3b92a71",
+      "source_commit": "e150a29",
+      "overrides": [
+        "hybrid=relational_stationary",
+        "env=heterogeneous_hybrid",
+        "seed=42",
+        "n_envs=8",
+        "total_timesteps=30000",
+        "warmup_steps=5000",
+        "bc_pretrain_steps=0",
+        "checkpoint_freq=5000",
+        "validation_freq=5000",
+        "validation_episodes=5",
+        "validation_seed=5000",
+        "resume_model=/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+        "use_wandb=true",
+        "run_heuristic_baseline=false",
+        "exp_name=stationary_resume_50k_seed42",
+        "hydra.run.dir=/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_resume_50k_seed42"
+      ]
+    }
+  ],
+  "additional_confirmation_command": [
+    "/root/autodl-tmp/uav-sfc-venv/bin/python",
+    "-m",
+    "test.cpu_model_eval",
+    "heuristic",
+    "--config",
+    "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_resume_50k_seed42",
+    "--device",
+    "cuda",
+    "--seed",
+    "6000",
+    "--episodes",
+    "50",
+    "--mobility-source",
+    "zero"
+  ],
+  "notes": [
+    "Pipeline first selects among the final and in-training best-validation checkpoints on validation seeds 5000-5009, then confirms the selected model on seeds 6000-6049.",
+    "After the pipeline, evaluate this static full-state heuristic zero-mobility comparator on exactly seeds 6000-6049; it is a baseline, not a learned policy.",
+    "Verify the resumed model archive and all metrics before acknowledging new monitor events. Restart the watcher and retarget the read-only endpoint to the new pipeline only after writable SSH is available."
+  ]
+}
