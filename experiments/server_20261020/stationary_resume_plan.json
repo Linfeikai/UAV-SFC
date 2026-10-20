@@ -1,6 +1,6 @@
 {
   "status": "prepared_not_launched",
-  "reason": "The current SSH authentication path is read-only and the prior interactive session rejects input; do not submit this plan until writable access is restored.",
+  "reason": "Writable SSH is unavailable. After access is restored, finish the four-policy 50-episode pretraining confirmation and record the continuation decision before submitting this training candidate to motion_search.py.",
   "source_commit": "e150a29",
   "root": "/root/autodl-tmp/UAV-SFC-motion-e150a29",
   "source_checkpoint": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
@@ -38,7 +38,8 @@
         "run_heuristic_baseline=false",
         "exp_name=stationary_resume_50k_seed42",
         "hydra.run.dir=/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_resume_50k_seed42"
-      ]
+      ],
+      "run_id_status": "reserved_not_started"
     }
   ],
   "additional_confirmation_command": [
@@ -58,8 +59,15 @@
     "zero"
   ],
   "notes": [
+    "Execution order: restore writable SSH, verify the selected checkpoint, complete seeds 4000-4049 for the learned policy and all three baselines, record a decision, then launch continuation only if justified.",
     "Pipeline first selects among the final and in-training best-validation checkpoints on validation seeds 5000-5009, then confirms the selected model on seeds 6000-6049.",
     "After the pipeline, evaluate this static full-state heuristic zero-mobility comparator on exactly seeds 6000-6049; it is a baseline, not a learned policy.",
     "Verify the resumed model archive and all metrics before acknowledging new monitor events. Restart the watcher and retarget the read-only endpoint to the new pipeline only after writable SSH is available."
-  ]
+  ],
+  "launch_gate": {
+    "status": "pending_pretraining_confirmation",
+    "required_plan": "experiments/server_20261020/stationary_pretraining_confirmation_plan.json",
+    "decision_record": null,
+    "instruction": "Do not submit this training plan until all four evaluations are complete and their measured results justify continuation. motion_search.py does not enforce this metadata."
+  }
 }
