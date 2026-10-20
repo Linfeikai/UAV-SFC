@@ -23,7 +23,8 @@ def mobility_bc_loss(actor, observations, target_actions):
     prediction = actor._epsilon_net(
         features[:, :actor.core_features_dim], alpha * clean + sigma * noise, timesteps,
     )
-    return (prediction - noise).square().mean()
+    target = clean if actor.prediction_type == "sample" else noise
+    return (prediction - target).square().mean()
 
 
 def _observation_batch(
@@ -94,26 +95,7 @@ def pretrain_actor(
                         predicted_mobility - mobility_targets
                     ).square().mean()
                 else:
-                    clean_actions = th.atanh(
-                        mobility_targets.clamp(-0.95, 0.95)
-                    )
-                    timesteps = th.randint(
-                        0, actor.T, (batch_size,), device=device
-                    )
-                    noise = th.randn_like(clean_actions)
-                    alpha = actor.sqrt_alphas_cumprod.gather(
-                        0, timesteps
-                    ).reshape(-1, 1)
-                    sigma = actor.sqrt_one_minus_alphas_cumprod.gather(
-                        0, timesteps
-                    ).reshape(-1, 1)
-                    noisy_actions = alpha * clean_actions + sigma * noise
-                    predicted_noise = actor._epsilon_net(
-                        features[:, : actor.core_features_dim],
-                        noisy_actions,
-                        timesteps,
-                    )
-                    mobility_loss = (predicted_noise - noise).square().mean()
+                    mobility_loss = mobility_bc_loss(actor, obs_batch, target_actions)
             loss = placement_loss + mobility_weight * mobility_loss
         elif hasattr(actor, "_epsilon_net"):
             clean_actions = th.atanh(target_actions.clamp(-0.95, 0.95))

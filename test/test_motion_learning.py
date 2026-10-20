@@ -75,6 +75,7 @@ class MotionLearningTests(unittest.TestCase):
                         hybrid_categorical_placement=True, relational_placement=True,
                         beta_schedule='cosine' if kind == 'diffusion' else 'linear',
                         clip_denoised=2.5 if kind == 'diffusion' else None,
+                        prediction_type='sample' if kind == 'diffusion' else 'epsilon',
                         mobility_policy=kind, detach_placement_for_rl=(kind == 'gaussian')),
                     **options)
                 model.set_expert_data([obs], np.array([action]))
@@ -89,6 +90,7 @@ class MotionLearningTests(unittest.TestCase):
                 if kind == 'diffusion':
                     self.assertEqual(loaded.actor.beta_schedule, 'cosine')
                     self.assertEqual(loaded.actor.clip_denoised, 2.5)
+                    self.assertEqual(loaded.actor.prediction_type, 'sample')
                 prediction, _ = loaded.predict(obs)
                 self.assertTrue(np.isfinite(prediction).all())
 

@@ -32,6 +32,7 @@ validation_seed: 2000
 resume_model: null
 diffusion_beta_schedule: linear
 diffusion_clip_denoised: null
+diffusion_prediction_type: epsilon
 hybrid_categorical_placement: false
 categorical_temperature: 0.7
 placement_prior_scale: 1.0

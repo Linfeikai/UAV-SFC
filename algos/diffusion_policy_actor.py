@@ -179,6 +179,7 @@ class DiffusionPolicyActor(BasePolicy):
         T_steps: int = 20,  # 扩散总步数 T_total
         beta_schedule: str = "linear",
         clip_denoised: float | None = None,
+        prediction_type: str = "epsilon",
         log_prob_n_steps: int = 10,  # 数值积分步数 T_log_prob
         log_prob_n_samples: int = 10,  # 蒙特卡洛采样数 N
         normalize_images: bool = True,
@@ -295,6 +296,9 @@ class DiffusionPolicyActor(BasePolicy):
 
         self.beta_schedule = beta_schedule
         self.clip_denoised = clip_denoised
+        if prediction_type not in {"epsilon", "sample"}:
+            raise ValueError("prediction_type must be epsilon or sample")
+        self.prediction_type = prediction_type
         if clip_denoised is not None and clip_denoised <= 0:
             raise ValueError("clip_denoised must be positive")
         diffusion_schedule = _precompute_diffusion_schedule(self.T, beta_schedule=beta_schedule)
@@ -315,6 +319,7 @@ class DiffusionPolicyActor(BasePolicy):
             T_steps=self.T,
             beta_schedule=self.beta_schedule,
             clip_denoised=self.clip_denoised,
+            prediction_type=self.prediction_type,
             log_prob_n_steps=self.T_log_prob,
             log_prob_n_samples=self.N_log_prob,
             entropy_scale=self.entropy_scale,
@@ -743,9 +748,16 @@ class DiffusionPolicyActor(BasePolicy):
             pred_x0 = (
                 action_t - torch.sqrt(1.0 - alpha_bar_t) * predicted_noise
             ) / torch.sqrt(alpha_bar_t)
+            if self.prediction_type == "sample":
+                pred_x0 = predicted_noise
             if self.clip_denoised is not None:
                 pred_x0 = pred_x0.clamp(-self.clip_denoised, self.clip_denoised)
             pred_x0 = self._apply_ray_mask(pred_x0, features)
+            if self.prediction_type == "sample":
+                # x0 prediction uses the same DDIM posterior, with epsilon
+                # reconstructed after clipping/projection of the clean action.
+                predicted_noise = (action_t - torch.sqrt(alpha_bar_t) * pred_x0) / torch.sqrt(1 - alpha_bar_t)
+                last_noise = predicted_noise
 
             # --- 二、数学实现统一 (DDIM 分支) ---
             if not deterministic and t_prev is not None:

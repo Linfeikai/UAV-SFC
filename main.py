@@ -368,6 +368,7 @@ def main(cfg: DictConfig):
             T=20,  # Actor 的扩散步数
             beta_schedule=str(cfg.get("diffusion_beta_schedule", "linear")),
             clip_denoised=cfg.get("diffusion_clip_denoised", None),
+            prediction_type=str(cfg.get("diffusion_prediction_type", "epsilon")),
             net_arch=[256, 256],
             hybrid_categorical_placement=bool(
                 cfg.get("hybrid_categorical_placement", False)

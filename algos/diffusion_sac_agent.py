@@ -549,9 +549,14 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     )
 
                     # (f) 计算最终的Actor Loss (MSE)
-                    actor_loss = F.mse_loss(
-                        predicted_noise, target_noise.detach()
-                    )  # target_noise不反向传播
+                    if self.actor.prediction_type == "sample":
+                        target_clean = (noisy_actions_t - sqrt_one_minus_alpha_bar * target_noise.detach()) / sqrt_alpha_bar
+                        if self.actor.clip_denoised is not None:
+                            limit = self.actor.clip_denoised
+                            target_clean = target_clean.clamp(-limit, limit)
+                        actor_loss = F.mse_loss(predicted_noise, target_clean.detach())
+                    else:
+                        actor_loss = F.mse_loss(predicted_noise, target_noise.detach())
                     if self.actor.hybrid_categorical_placement:
                         q_scale = q_values_k.std(
                             dim=1, keepdim=True, unbiased=False
