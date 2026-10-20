@@ -30,6 +30,8 @@ validation_freq: 0
 validation_episodes: 5
 validation_seed: 2000
 resume_model: null
+diffusion_beta_schedule: linear
+diffusion_clip_denoised: null
 hybrid_categorical_placement: false
 categorical_temperature: 0.7
 placement_prior_scale: 1.0

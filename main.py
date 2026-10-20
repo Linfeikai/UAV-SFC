@@ -366,6 +366,8 @@ def main(cfg: DictConfig):
             core_features_dim=256,  # 对应特征提取器中语义特征的维度
             share_features_extractor=True,
             T=20,  # Actor 的扩散步数
+            beta_schedule=str(cfg.get("diffusion_beta_schedule", "linear")),
+            clip_denoised=cfg.get("diffusion_clip_denoised", None),
             net_arch=[256, 256],
             hybrid_categorical_placement=bool(
                 cfg.get("hybrid_categorical_placement", False)

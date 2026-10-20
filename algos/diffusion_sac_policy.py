@@ -53,6 +53,7 @@ class DiffusionSACPolicy(BasePolicy):
         # --- Diffusion Actor 特有的参数 ---
         T: int = 5,
         beta_schedule: str = "linear",
+        clip_denoised: float | None = None,
         n_uavs: int = 4,  # 用于构建 Actor 的掩码参数维度
         m_candidates: int = 12,  # 候选任务池大小 M
         decision_tasks: int = 6,  # 每步最多决策任务数 K
@@ -102,6 +103,7 @@ class DiffusionSACPolicy(BasePolicy):
         # -- 保存 Diffusion Actor 的参数 --
         self.T = T
         self.beta_schedule = beta_schedule
+        self.clip_denoised = clip_denoised
         self.n_uavs = n_uavs
         self.m_candidates = m_candidates
         self.decision_tasks = decision_tasks
@@ -137,6 +139,8 @@ class DiffusionSACPolicy(BasePolicy):
             {
                 "net_arch": actor_arch,
                 "T_steps": self.T,
+                "beta_schedule": self.beta_schedule,
+                "clip_denoised": self.clip_denoised,
                 "n_uavs": self.n_uavs,
                 "m_candidates": self.m_candidates,
                 "decision_tasks": self.decision_tasks,

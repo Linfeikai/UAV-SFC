@@ -23,10 +23,22 @@ from stable_baselines3.common.type_aliases import PyTorchObs
 
 
 def _precompute_diffusion_schedule(
-    T_steps: int, beta_start: float = 0.0001, beta_end: float = 0.02
+    T_steps: int, beta_start: float = 0.0001, beta_end: float = 0.02,
+    beta_schedule: str = "linear",
 ) -> Dict[str, Tensor]:
     """预计算扩散过程的所有beta/alpha相关参数"""
-    betas = torch.linspace(beta_start, beta_end, T_steps, dtype=torch.float32)
+    if T_steps < 2:
+        raise ValueError("Diffusion requires at least two timesteps")
+    if beta_schedule == "linear":
+        betas = torch.linspace(beta_start, beta_end, T_steps, dtype=torch.float32)
+    elif beta_schedule == "cosine":
+        # Nichol & Dhariwal's discretization: near-zero terminal signal even
+        # with a short action diffusion chain. Keep legacy linear checkpoints.
+        times = torch.linspace(0, 1, T_steps + 1, dtype=torch.float64)
+        cumulative = torch.cos((times + 0.008) / 1.008 * math.pi / 2).square()
+        betas = (1 - cumulative[1:] / cumulative[:-1]).clamp(max=0.999).float()
+    else:
+        raise ValueError(f"Unknown beta schedule: {beta_schedule}")
     alphas = 1.0 - betas  # 保留原始 alpha_t
     alphas_cumprod = torch.cumprod(alphas, dim=0)  # \bar{alpha}_t
     alphas_cumprod_prev = torch.cat([torch.tensor([1.0]), alphas_cumprod[:-1]], dim=0)
@@ -165,6 +177,8 @@ class DiffusionPolicyActor(BasePolicy):
         core_features_dim: int,  # 用于构建 Actor 的核心特征维度
         # 扩散模型特定超参数
         T_steps: int = 20,  # 扩散总步数 T_total
+        beta_schedule: str = "linear",
+        clip_denoised: float | None = None,
         log_prob_n_steps: int = 10,  # 数值积分步数 T_log_prob
         log_prob_n_samples: int = 10,  # 蒙特卡洛采样数 N
         normalize_images: bool = True,
@@ -279,7 +293,11 @@ class DiffusionPolicyActor(BasePolicy):
                 nn.Linear(hidden_dim, self.n_uavs),
             )
 
-        diffusion_schedule = _precompute_diffusion_schedule(self.T)
+        self.beta_schedule = beta_schedule
+        self.clip_denoised = clip_denoised
+        if clip_denoised is not None and clip_denoised <= 0:
+            raise ValueError("clip_denoised must be positive")
+        diffusion_schedule = _precompute_diffusion_schedule(self.T, beta_schedule=beta_schedule)
         for key, value in diffusion_schedule.items():
             self.register_buffer(key, value)
 
@@ -295,6 +313,8 @@ class DiffusionPolicyActor(BasePolicy):
             core_features_dim=self.core_features_dim,
             # -------------------------------------------------------
             T_steps=self.T,
+            beta_schedule=self.beta_schedule,
+            clip_denoised=self.clip_denoised,
             log_prob_n_steps=self.T_log_prob,
             log_prob_n_samples=self.N_log_prob,
             entropy_scale=self.entropy_scale,
@@ -723,6 +743,8 @@ class DiffusionPolicyActor(BasePolicy):
             pred_x0 = (
                 action_t - torch.sqrt(1.0 - alpha_bar_t) * predicted_noise
             ) / torch.sqrt(alpha_bar_t)
+            if self.clip_denoised is not None:
+                pred_x0 = pred_x0.clamp(-self.clip_denoised, self.clip_denoised)
             pred_x0 = self._apply_ray_mask(pred_x0, features)
 
             # --- 二、数学实现统一 (DDIM 分支) ---

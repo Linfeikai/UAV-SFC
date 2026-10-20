@@ -12,12 +12,22 @@ from algos.diffusion_sac_agent import DiffusionSACAgent
 from algos.gaussian_hybrid_sac_agent import GaussianHybridSACAgent
 from algos.diffusion_sac_policy import DiffusionSACPolicy
 from algos.diffusion_extractor import SFCFeaturesExtractor
+from algos.diffusion_policy_actor import _precompute_diffusion_schedule
 from core.sfc_env import SFCEnv
 from scripts.training_validation import preserve_training_state, validation_score
 from test.evalu import smart_heuristic_policy
 
 
 class MotionLearningTests(unittest.TestCase):
+    def test_cosine_terminal_distribution_is_almost_pure_noise(self):
+        legacy = _precompute_diffusion_schedule(20)
+        cosine = _precompute_diffusion_schedule(20, beta_schedule='cosine')
+        self.assertGreater(legacy['alphas_cumprod'][-1], 0.8)
+        self.assertLess(cosine['alphas_cumprod'][-1], 1e-4)
+        for values in cosine.values():
+            self.assertTrue(torch.isfinite(values).all())
+        self.assertTrue((cosine['alphas_cumprod'].diff() < 0).all())
+
     def test_validation_restores_random_streams_and_mode_even_on_error(self):
         random.seed(17)
         np.random.seed(17)
@@ -63,6 +73,8 @@ class MotionLearningTests(unittest.TestCase):
                         features_extractor_kwargs=dict(n_uavs=env.N, m_candidates=env.M,
                                                        grid_res=env.grid_res),
                         hybrid_categorical_placement=True, relational_placement=True,
+                        beta_schedule='cosine' if kind == 'diffusion' else 'linear',
+                        clip_denoised=2.5 if kind == 'diffusion' else None,
                         mobility_policy=kind, detach_placement_for_rl=(kind == 'gaussian')),
                     **options)
                 model.set_expert_data([obs], np.array([action]))
@@ -74,6 +86,9 @@ class MotionLearningTests(unittest.TestCase):
                 model.save(path)
                 loaded = cls.load(path, device='cpu')
                 self.assertEqual(loaded.mobility_bc_coef, 1)
+                if kind == 'diffusion':
+                    self.assertEqual(loaded.actor.beta_schedule, 'cosine')
+                    self.assertEqual(loaded.actor.clip_denoised, 2.5)
                 prediction, _ = loaded.predict(obs)
                 self.assertTrue(np.isfinite(prediction).all())
 

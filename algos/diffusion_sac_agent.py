@@ -413,6 +413,9 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                     k_candidate_actions = (
                         a_t_expanded - sqrt_one_minus_alpha_bar_exp * k_noises
                     ) / sqrt_alpha_bar_exp  # [B, K, A_dim]
+                    if self.actor.clip_denoised is not None:
+                        limit = self.actor.clip_denoised
+                        k_candidate_actions = k_candidate_actions.clamp(-limit, limit)
 
                     # 【修复 #3】与采样路径 (_sample_from_noise) 保持一致：
                     # 在 tanh 之前对候选动作施加 ray mask，否则 Critic 打分评估的是
