@@ -21,6 +21,7 @@ run_heuristic_reuse: False
 heuristic_reuse_input: DIFFUSION 
 warmup_steps: 20000 # 预热阶段的步数，期间完全使用启发式策略来填充经验回放缓冲区
 warmup_random_fraction: 0.2
+warmup_mobility_source: heuristic
 # Replay warmup trains the critic but does not directly teach the actor.
 bc_pretrain_steps: 0
 bc_batch_size: 256
@@ -33,6 +34,8 @@ resume_model: null
 diffusion_beta_schedule: linear
 diffusion_clip_denoised: null
 diffusion_prediction_type: epsilon
+share_features_extractor: true
+canonical_categorical_critic: false
 hybrid_categorical_placement: false
 categorical_temperature: 0.7
 placement_prior_scale: 1.0

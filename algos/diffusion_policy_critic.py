@@ -41,6 +41,7 @@ class ContinuousCritic(BaseModel):
         normalize_images: bool = True,
         n_critics: int = 2,
         share_features_extractor: bool = True,
+        categorical_n_uavs: int = 0,
     ):
         super().__init__(
             observation_space,
@@ -53,6 +54,7 @@ class ContinuousCritic(BaseModel):
         self.action_dim = get_action_dim(action_space)
         self.share_features_extractor = share_features_extractor
         self.n_critics = n_critics
+        self.categorical_n_uavs = int(categorical_n_uavs)
         self.q_networks = nn.ModuleList()
         self.net_arch = net_arch
         self.activation_fn = activation_fn
@@ -68,6 +70,21 @@ class ContinuousCritic(BaseModel):
             )
             self.q_networks.append(q_net)
 
+    def _canonical_action(self, obs, action):
+        """Preserve placement ranking, removing irrelevant logit magnitudes."""
+        n = self.categorical_n_uavs
+        if not n:
+            return action
+        logits = action[:, n * 2:].reshape(len(action), -1, n)
+        order = logits.argsort(dim=-1, stable=True)
+        ranks = torch.zeros_like(logits).scatter(-1, order,
+            torch.linspace(-1, 1, n, device=action.device, dtype=action.dtype).expand_as(logits))
+        active = obs['placement_context'].reshape(len(action), -1, n + 1)[..., -1:]
+        # The forward path is rank invariant; retain the categorical actor's
+        # straight-through gradient when an experiment enables placement Q loss.
+        encoded = (logits + (ranks - logits).detach()) * active
+        return torch.cat([action[:, :n * 2], encoded.flatten(1)], dim=1)
+
     def forward(
         self, obs: PyTorchObs, action: torch.Tensor
     ) -> Tuple[torch.Tensor, ...]:
@@ -80,28 +97,28 @@ class ContinuousCritic(BaseModel):
             "Features extractor must be initialized"
         )
         # 💡 【核心修复】：如果是共享特征，切断 Critic 的梯度回传！
-        with torch.set_grad_enabled(not self.share_features_extractor):
+        with torch.set_grad_enabled(torch.is_grad_enabled() and not self.share_features_extractor):
             features = self.extract_features(obs, self.features_extractor)
 
-        qvalue_input = torch.cat([features, action], dim=1)
+        qvalue_input = torch.cat([features, self._canonical_action(obs, action)], dim=1)
         return tuple(q_net(qvalue_input) for q_net in self.q_networks)
 
     def q1_forward(self, obs: PyTorchObs, action: torch.Tensor) -> torch.Tensor:
         assert self.features_extractor is not None, (
             "Features extractor must be initialized"
         )
-        with torch.set_grad_enabled(not self.share_features_extractor):
+        with torch.set_grad_enabled(torch.is_grad_enabled() and not self.share_features_extractor):
             features = self.extract_features(obs, self.features_extractor)
-        qvalue_input = torch.cat([features, action], dim=1)
+        qvalue_input = torch.cat([features, self._canonical_action(obs, action)], dim=1)
         return self.q_networks[0](qvalue_input)
 
     def q2_forward(self, obs: PyTorchObs, action: torch.Tensor) -> torch.Tensor:
         assert self.features_extractor is not None, (
             "Features extractor must be initialized"
         )
-        with torch.set_grad_enabled(not self.share_features_extractor):
+        with torch.set_grad_enabled(torch.is_grad_enabled() and not self.share_features_extractor):
             features = self.extract_features(obs, self.features_extractor)
-        qvalue_input = torch.cat([features, action], dim=1)
+        qvalue_input = torch.cat([features, self._canonical_action(obs, action)], dim=1)
         return self.q_networks[1](qvalue_input)
 
     def _get_constructor_parameters(self) -> dict:
@@ -115,5 +132,7 @@ class ContinuousCritic(BaseModel):
             activation_fn=self.activation_fn,  # ✅ 直接给类
             features_extractor=self.features_extractor,
             features_dim=self.features_dim,
+            share_features_extractor=self.share_features_extractor,
+            categorical_n_uavs=self.categorical_n_uavs,
         )
         return data

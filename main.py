@@ -289,6 +289,11 @@ def main(cfg: DictConfig):
     hydra_exp_dir = HydraConfig.get().run.dir
     os.makedirs(hydra_exp_dir, exist_ok=True)
     flat_config = get_flat_config(cfg)
+    if cfg.get("canonical_categorical_critic", False) and any(
+        float(flat_config.get(key, 0)) != 0 for key in
+        ("PLACEMENT_AFFINITY_BIAS", "PLACEMENT_LOAD_BIAS", "PLACEMENT_DISTANCE_BIAS")
+    ):
+        raise ValueError("Rank-canonical critic requires zero placement decoder biases")
     algo_str = cfg.algo_name.upper()
 
     # --- A. 核心缝合逻辑：将层级配置转为扁平配置 ---
@@ -364,7 +369,8 @@ def main(cfg: DictConfig):
             m_candidates=flat_config["M"],  # 候选任务池大小
             decision_tasks=flat_config["K"],  # 确定 Pick 动作切片位置
             core_features_dim=256,  # 对应特征提取器中语义特征的维度
-            share_features_extractor=True,
+            share_features_extractor=bool(cfg.get("share_features_extractor", True)),
+            canonical_categorical_critic=bool(cfg.get("canonical_categorical_critic", False)),
             T=20,  # Actor 的扩散步数
             beta_schedule=str(cfg.get("diffusion_beta_schedule", "linear")),
             clip_denoised=cfg.get("diffusion_clip_denoised", None),
@@ -429,6 +435,9 @@ def main(cfg: DictConfig):
     warmup_steps = cfg.get("warmup_steps", 0)
     expert_observations = []
     expert_actions = []
+    warmup_mobility_source = str(cfg.get("warmup_mobility_source", "heuristic"))
+    if warmup_mobility_source not in {"heuristic", "brake"}:
+        raise ValueError("warmup_mobility_source must be heuristic or brake")
     if warmup_steps > 0 and not hasattr(model, "replay_buffer"):
         print(f"[Warmup] {algo_str} has no replay buffer; skipping replay warmup.")
         warmup_steps = 0
@@ -459,6 +468,12 @@ def main(cfg: DictConfig):
                 )
                 if use_expert:
                     action = smart_heuristic_policy(temp_env)
+                    if warmup_mobility_source == "brake":
+                        # Observation-equivalent velocity feedback: a teacher
+                        # for training, never an override during policy inference.
+                        velocity = np.asarray([u.velocity for u in temp_env.uavs])
+                        brake = -velocity / (UAVNode.MAX_ACCELERATION * temp_env.dt_fly)
+                        action[:2 * temp_env.N] = np.clip(brake, -1, 1).reshape(-1)
                     expert_observations.append(
                         {key: value.copy() for key, value in obs.items()}
                     )

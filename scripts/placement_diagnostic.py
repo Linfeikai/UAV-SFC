@@ -35,7 +35,7 @@ class ComposedPolicy:
         self.mobility = mobility
         self.placement = placement
         self.dims = int(self.config['NUM_UAVS']) * 2
-        if mobility not in {'learned', 'heuristic'} or placement not in {'learned', 'heuristic'}:
+        if mobility not in {'learned', 'heuristic', 'zero'} or placement not in {'learned', 'heuristic'}:
             raise ValueError('Unsupported intervention')
         if not np.allclose(model.action_space.low, -1) or not np.allclose(model.action_space.high, 1):
             raise ValueError('Interventions require the symmetric normalized action space')
@@ -51,8 +51,8 @@ class ComposedPolicy:
             return heuristic, None
         learned, state = self.model.predict(obs, deterministic=deterministic)
         action = np.asarray(learned).copy()
-        if self.mobility == 'heuristic':
-            action[:self.dims] = heuristic[:self.dims]
+        if self.mobility != 'learned':
+            action[:self.dims] = heuristic[:self.dims] if self.mobility == 'heuristic' else 0
             actor = self.model.actor
             if (self.placement == 'learned' and getattr(actor, 'hybrid_categorical_placement', False)
                     and getattr(actor, 'relational_placement', False)

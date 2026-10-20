@@ -55,6 +55,7 @@ class DiffusionSACPolicy(BasePolicy):
         beta_schedule: str = "linear",
         clip_denoised: float | None = None,
         prediction_type: str = "epsilon",
+        canonical_categorical_critic: bool = False,
         n_uavs: int = 4,  # 用于构建 Actor 的掩码参数维度
         m_candidates: int = 12,  # 候选任务池大小 M
         decision_tasks: int = 6,  # 每步最多决策任务数 K
@@ -106,6 +107,7 @@ class DiffusionSACPolicy(BasePolicy):
         self.beta_schedule = beta_schedule
         self.clip_denoised = clip_denoised
         self.prediction_type = prediction_type
+        self.canonical_categorical_critic = canonical_categorical_critic
         self.n_uavs = n_uavs
         self.m_candidates = m_candidates
         self.decision_tasks = decision_tasks
@@ -165,6 +167,8 @@ class DiffusionSACPolicy(BasePolicy):
         self.critic_kwargs.update(
             {
                 "net_arch": critic_arch,
+                "share_features_extractor": self.share_features_extractor,
+                "categorical_n_uavs": self.n_uavs if canonical_categorical_critic else 0,
             }
         )
 

@@ -1,0 +1,29 @@
+# @package _global_
+# Learn when to stop; inference uses the learned actor without a motion override.
+hybrid_categorical_placement: true
+relational_placement: true
+placement_prior_scale: 0.0
+warmup_steps: 5000
+warmup_mobility_source: brake
+bc_pretrain_steps: 4000
+bc_batch_size: 256
+bc_mobility_weight: 1.0
+n_envs: 8
+checkpoint_freq: 5000
+validation_freq: 5000
+validation_episodes: 5
+validation_seed: 2000
+diffusion_beta_schedule: cosine
+diffusion_clip_denoised: 2.5
+diffusion_prediction_type: sample
+share_features_extractor: false
+canonical_categorical_critic: true
+
+diffusion:
+  batch_size: 256
+  gradient_steps: 1
+  qne_k_samples: 8
+  categorical_q_coef: 0.0
+  categorical_bc_coef: 1.0
+  categorical_bc_batch_size: 128
+  mobility_bc_coef: 4.0

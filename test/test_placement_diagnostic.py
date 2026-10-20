@@ -55,6 +55,12 @@ class DiagnosticTests(unittest.TestCase):
         np.testing.assert_allclose(action, [0.8, 0.4, 0.9])
         self.model.actor.sample_placement.assert_not_called()
 
+    def test_zero_acceleration_recomputes_placement_with_inertia(self):
+        action, _ = ComposedPolicy(self.model, self.config, 'zero', 'learned').predict({})
+        np.testing.assert_allclose(action, [0, 0, 0.7])
+        kwargs = self.model.actor.sample_placement.call_args.kwargs
+        np.testing.assert_allclose(kwargs['mobility_action'].numpy(), [[0, 0]])
+
     def test_heuristic_heuristic_does_not_sample_model(self):
         action, _ = ComposedPolicy(self.model, self.config, 'heuristic', 'heuristic').predict({})
         np.testing.assert_allclose(action, self.heuristic)
