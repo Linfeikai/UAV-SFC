@@ -147,6 +147,8 @@ def evaluate(
     if apply_mobility_mask:
         cfg["APPLY_MOBILITY_MASK_IN_ENV"] = True
     env = SFCEnv(config=cfg)
+    if mobility_source == "zero" and model is not None:
+        raise ValueError("Use ComposedPolicy to recompute learned placement after a motion intervention")
     totals = {
         "reward": 0.0,
         "available": 0,
@@ -183,10 +185,7 @@ def evaluate(
         done = False
         while not done:
             observation_action = None
-            if observation_heuristic or {
-                mobility_source,
-                placement_source,
-            } != {"default"}:
+            if observation_heuristic or mobility_source == "obs_heuristic" or placement_source == "obs_heuristic":
                 observation_action = observation_heuristic_policy(
                     obs,
                     n_uavs=env.N,
@@ -209,6 +208,9 @@ def evaluate(
                 if placement_source == "obs_heuristic":
                     action = action.copy()
                     action[mobility_dim:] = observation_action[mobility_dim:]
+            if mobility_source == "zero":
+                action = action.copy()
+                action[:env.N * 2] = 0.0
             mobility_components = np.asarray(action[: env.N * 2], dtype=np.float64)
             totals["mobility_abs_sum"] += float(np.abs(mobility_components).sum())
             totals["mobility_square_sum"] += float(
@@ -318,7 +320,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--mobility-source",
-        choices=["default", "obs_heuristic"],
+        choices=["default", "obs_heuristic", "zero"],
         default="default",
     )
     parser.add_argument(
@@ -370,6 +372,8 @@ def main() -> None:
         placement_source=args.placement_source,
     )
     result["algorithm"] = args.algorithm
+    result["mobility_source"] = args.mobility_source
+    result["placement_source"] = args.placement_source
     result["model"] = args.model
     result["config"] = config_path
     result["reward_success"] = env_config["RWD_SUCCESS"]

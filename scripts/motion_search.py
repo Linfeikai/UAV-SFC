@@ -120,7 +120,8 @@ def main():
                 if proc is not None and proc.wait() != 0:
                     raise RuntimeError('Training failed: ' + variant)
                 folder = Path(job['folder'])
-                final = folder / 'DIFFUSION_final_model.zip'
+                algorithm = job.get('base_algorithm', 'DIFFUSION')
+                final = folder / (algorithm + '_final_model.zip')
                 if not final.exists():
                     raise RuntimeError('Process exited without a final model: ' + variant)
                 record['status'] = 'validating'
@@ -133,7 +134,7 @@ def main():
                     candidates.append(best)
                 options = []
                 for index, candidate in enumerate(candidates):
-                    metrics = evaluate(job, candidate, 'diffusion',
+                    metrics = evaluate(job, candidate, algorithm.lower(),
                                        variant.lower() + f'_selection_{index}.json',
                                        plan['validation_seed'], plan['validation_episodes'])
                     options.append((validation_score(metrics), candidate, metrics))
@@ -143,7 +144,7 @@ def main():
                 model_file = target / (variant + '_final_model.zip')
                 shutil.copy2(selected, model_file)
                 shutil.copy2(folder / '.hydra/config.yaml', target / '.hydra/config.yaml')
-                model = ALGO_REGISTRY['DIFFUSION'].load(final, device='cuda')
+                model = ALGO_REGISTRY[algorithm].load(final, device='cuda')
                 assert all(torch.isfinite(p).all() for p in model.policy.parameters())
                 record.update(timesteps=int(model.num_timesteps), updates=int(model._n_updates),
                               selected_checkpoint=str(selected), selection=selection,
@@ -159,10 +160,10 @@ def main():
                         count += len(values)
                 record['finite_scalar_count'] = count
                 record['evaluations'] = {}
-                for policy in ('diffusion', 'heuristic', 'obs_heuristic'):
-                    key = variant.lower() if policy == 'diffusion' else policy
+                for policy in (algorithm.lower(), 'heuristic', 'obs_heuristic'):
+                    key = variant.lower() if policy == algorithm.lower() else policy
                     record['evaluations'][key] = evaluate(
-                        job, model_file if policy == 'diffusion' else None, policy,
+                        job, model_file if policy == algorithm.lower() else None, policy,
                         variant.lower() + '_eval_' + key + '.json',
                         plan['confirmation_seed'], plan['eval_episodes'])
                 try:
