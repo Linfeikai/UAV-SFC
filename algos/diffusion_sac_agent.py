@@ -21,6 +21,7 @@ from .diffusion_sac_policy import DiffusionSACPolicy
 # 导入我们新定义的 Actor 和 Critic
 from .diffusion_policy_actor import DiffusionPolicyActor
 from .diffusion_policy_critic import ContinuousCritic
+from .behavior_cloning import mobility_bc_loss
 
 # 导入标准的 ReplayBuffer 和 SB3 的核心组件
 from stable_baselines3.common.buffers import ReplayBuffer
@@ -79,6 +80,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         categorical_bc_batch_size: int = 256,
         categorical_bc_policy_mobility: bool = False,
         categorical_bc_policy_mobility_prob: float = 0.0,
+        mobility_bc_coef: float = 0.0,
         # --- 其他标准参数 ---
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
@@ -122,6 +124,9 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
         self.categorical_q_coef = categorical_q_coef
         self.categorical_entropy_coef = categorical_entropy_coef
         self.categorical_bc_coef = categorical_bc_coef
+        self.mobility_bc_coef = float(mobility_bc_coef)
+        if self.mobility_bc_coef < 0:
+            raise ValueError("mobility_bc_coef must be nonnegative")
         self.categorical_bc_batch_size = categorical_bc_batch_size
         self.categorical_bc_policy_mobility = categorical_bc_policy_mobility
         self.categorical_bc_policy_mobility_prob = float(
@@ -566,7 +571,7 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                             mean_placement_entropy.item(),
                         )
                         if (
-                            self.categorical_bc_coef > 0
+                            (self.categorical_bc_coef > 0 or self.mobility_bc_coef > 0)
                             and self._expert_observations is not None
                             and self._expert_actions is not None
                         ):
@@ -629,6 +634,12 @@ class DiffusionSACAgent(OffPolicyAlgorithm):
                                 "train/categorical_bc_loss",
                                 categorical_bc_loss.item(),
                             )
+                            if self.mobility_bc_coef > 0:
+                                mobility_loss = mobility_bc_loss(
+                                    self.actor, expert_obs, expert_actions,
+                                )
+                                actor_loss = actor_loss + self.mobility_bc_coef * mobility_loss
+                                self.logger.record("train/mobility_bc_loss", mobility_loss.item())
                     if self.qne_entropy_lambda > 0:
                         entropy = (
                             -(softmax_weights * (softmax_weights + 1e-8).log())

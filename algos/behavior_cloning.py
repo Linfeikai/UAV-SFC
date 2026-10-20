@@ -8,6 +8,24 @@ import numpy as np
 import torch as th
 
 
+def mobility_bc_loss(actor, observations, target_actions):
+    """Supervise mobility without a costly differentiable diffusion rollout."""
+    features = actor.extract_features(observations, actor.features_extractor)
+    targets = target_actions[:, :actor.mobility_dim]
+    if getattr(actor, "mobility_policy", "diffusion") == "gaussian":
+        prediction, _ = actor._sample_gaussian_mobility(features, deterministic=True)
+        return (prediction - targets).square().mean()
+    clean = th.atanh(targets.clamp(-0.95, 0.95))
+    timesteps = th.randint(0, actor.T, (len(targets),), device=targets.device)
+    noise = th.randn_like(clean)
+    alpha = actor.sqrt_alphas_cumprod[timesteps, None]
+    sigma = actor.sqrt_one_minus_alphas_cumprod[timesteps, None]
+    prediction = actor._epsilon_net(
+        features[:, :actor.core_features_dim], alpha * clean + sigma * noise, timesteps,
+    )
+    return (prediction - noise).square().mean()
+
+
 def _observation_batch(
     observations: Sequence[Mapping[str, np.ndarray]],
     indices: np.ndarray,

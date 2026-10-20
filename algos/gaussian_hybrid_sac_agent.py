@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import torch as th
 from stable_baselines3 import SAC
+from .behavior_cloning import mobility_bc_loss
 
 
 class GaussianHybridSACAgent(SAC):
@@ -18,11 +19,15 @@ class GaussianHybridSACAgent(SAC):
         categorical_bc_coef: float = 1.0,
         categorical_bc_batch_size: int = 128,
         max_grad_norm: float = 1.0,
+        mobility_bc_coef: float = 0.0,
         **kwargs: Any,
     ) -> None:
         self.categorical_bc_coef = categorical_bc_coef
         self.categorical_bc_batch_size = categorical_bc_batch_size
         self.max_grad_norm = max_grad_norm
+        self.mobility_bc_coef = float(mobility_bc_coef)
+        if self.mobility_bc_coef < 0:
+            raise ValueError("mobility_bc_coef must be nonnegative")
         self._expert_observations: dict[str, np.ndarray] | None = None
         self._expert_actions: np.ndarray | None = None
         super().__init__(*args, **kwargs)
@@ -41,7 +46,7 @@ class GaussianHybridSACAgent(SAC):
 
     def _placement_ce_step(self) -> float | None:
         if (
-            self.categorical_bc_coef <= 0.0
+            (self.categorical_bc_coef <= 0.0 and self.mobility_bc_coef <= 0.0)
             or self._expert_observations is None
             or self._expert_actions is None
         ):
@@ -59,6 +64,10 @@ class GaussianHybridSACAgent(SAC):
         )
         loss = self.actor.placement_bc_loss(observations, target_actions)
         weighted_loss = self.categorical_bc_coef * loss
+        if self.mobility_bc_coef > 0:
+            mobility_loss = mobility_bc_loss(self.actor, observations, target_actions)
+            weighted_loss = weighted_loss + self.mobility_bc_coef * mobility_loss
+            self.logger.record("train/mobility_bc_loss", mobility_loss.detach().item())
         self.actor.optimizer.zero_grad()
         weighted_loss.backward()
         th.nn.utils.clip_grad_norm_(self.actor.parameters(), self.max_grad_norm)

@@ -26,6 +26,10 @@ bc_pretrain_steps: 0
 bc_batch_size: 256
 bc_learning_rate: 0.0001
 bc_mobility_weight: 0.0
+validation_freq: 0
+validation_episodes: 5
+validation_seed: 2000
+resume_model: null
 hybrid_categorical_placement: false
 categorical_temperature: 0.7
 placement_prior_scale: 1.0
@@ -59,9 +63,11 @@ diffusion:
   categorical_bc_batch_size: 256
   categorical_bc_policy_mobility: false
   categorical_bc_policy_mobility_prob: 0.0
+  mobility_bc_coef: 0.0
   gradient_steps: 2
 
 gaussian:
+  mobility_bc_coef: 0.0
   learning_rate: 0.0001
   buffer_size: 200000
   batch_size: 512

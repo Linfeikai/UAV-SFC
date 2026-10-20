@@ -404,15 +404,22 @@ def main(cfg: DictConfig):
         policy_class = "MultiInputPolicy"
         policy_kwargs = {}
     # --- D. 统一实例化 ---
-    model = AlgoClass(
-        policy=policy_class,  # 动态传入 Policy
-        env=env,
-        verbose=1,
-        seed=cfg.seed,
-        tensorboard_log=tensorboard_log_dir,
-        policy_kwargs=policy_kwargs,  # 动态传入图纸
-        **algo_params,  # 自动填入 learning_rate, batch_size 等
-    )
+    if cfg.get("resume_model"):
+        model = AlgoClass.load(
+            str(cfg.resume_model), env=env, verbose=1, seed=cfg.seed,
+            tensorboard_log=tensorboard_log_dir, **algo_params,
+        )
+        print(f"[Resume] Loaded {cfg.resume_model}; previous transitions={model.num_timesteps}")
+    else:
+        model = AlgoClass(
+            policy=policy_class,
+            env=env,
+            verbose=1,
+            seed=cfg.seed,
+            tensorboard_log=tensorboard_log_dir,
+            policy_kwargs=policy_kwargs,
+            **algo_params,
+        )
     # =======================================================
     # 🌟 优化后：80/20 混合预热 (启发式 + 随机探索)
     # =======================================================
@@ -533,6 +540,13 @@ def main(cfg: DictConfig):
     # --- E. 训练 ---
     print(f"当前模式: {algo_str} | 总步数: {cfg.total_timesteps}")
     callbacks = [SFCStatsCallback()]
+    if int(cfg.get("validation_freq", 0)) > 0:
+        from scripts.training_validation import SFCValidationCallback
+        callbacks.append(SFCValidationCallback(
+            flat_config, hydra_exp_dir, frequency=int(cfg.validation_freq),
+            episodes=int(cfg.get("validation_episodes", 5)),
+            seed=int(cfg.get("validation_seed", 2000)),
+        ))
     checkpoint_freq = int(cfg.get("checkpoint_freq", 0))
     if checkpoint_freq > 0:
         checkpoint_dir = os.path.join(hydra_exp_dir, "checkpoints")
