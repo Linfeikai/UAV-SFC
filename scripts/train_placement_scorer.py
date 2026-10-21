@@ -15,8 +15,8 @@ import torch
 from torch.nn import functional as F
 from algos.placement_scorer import DeploymentScorer, ScoredDeploymentPolicy
 from scripts.experiment_monitor import atomic_json
-from test.cpu_model_eval import evaluate, load_env_config
-from scripts.collect_scorer_data import REFERENCE_SHA
+from test.cpu_model_eval import evaluate
+from scripts.collect_scorer_data import REFERENCE_SHA, load_fixed_reference
 
 
 def main():
@@ -27,21 +27,27 @@ def main():
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--loss', choices=['regression', 'ranking'], required=True)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--device', choices=['cpu', 'cuda'], default='cuda',
+                        help='Explicit backend; CUDA never silently falls back to CPU')
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--validation-seed', type=int, default=18000)
     parser.add_argument('--validation-episodes', type=int, default=20)
     parser.add_argument('--confirmation-seed', type=int, default=19000)
     parser.add_argument('--confirmation-episodes', type=int, default=50)
     args = parser.parse_args()
-    assert torch.cuda.is_available(), 'No CPU training fallback'
-    assert hashlib.sha256(Path(args.config).read_bytes()).hexdigest() == REFERENCE_SHA
-    cfg = load_env_config(args.config)
+    if args.device == 'cuda':
+        assert torch.cuda.is_available(), 'CUDA requested but unavailable; choose --device cpu explicitly'
+    cfg, actual_config_sha = load_fixed_reference(args.config)
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     state = dict(status='training', started=datetime.now(timezone.utc).isoformat(),
                  pid=os.getpid(), run_id=args.run_id, arguments=vars(args),
-                 training_from_scratch=True, diagnostic_only=args.confirmation_episodes < 50,
+                 training_from_scratch=True,
+                 config_sha256=actual_config_sha, original_reference_sha256=REFERENCE_SHA,
+                 runtime=dict(python=sys.version.split()[0], torch=torch.__version__, numpy=np.__version__,
+                              training_device=args.device, execution_host=__import__('platform').node()),
+                 diagnostic_only=args.confirmation_episodes < 50,
                  learned_component='whole-deployment scorer',
                  motion_component='explicit shared velocity-braking controller', history=[])
     def save():
@@ -65,10 +71,10 @@ def main():
     assert len(train_indices) and len(valid_indices)
     mean = features[train_indices].mean((0, 1))
     scale = np.maximum(features[train_indices].std((0, 1)), .05)
-    x = torch.as_tensor((features - mean) / scale, device='cuda')
-    y = torch.as_tensor((rewards - rewards[:, :1]) / 3., device='cuda')
+    x = torch.as_tensor((features - mean) / scale, device=args.device)
+    y = torch.as_tensor((rewards - rewards[:, :1]) / 3., device=args.device)
     valid_x, valid_y = x[valid_indices], y[valid_indices]
-    model = DeploymentScorer(features.shape[-1]).cuda()
+    model = DeploymentScorer(features.shape[-1]).to(args.device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=.0003, weight_decay=.00001)
     best = None
     updates = 0
@@ -103,7 +109,7 @@ def main():
         state['history'].append(record)
         if best is None or (regret, mse) < best:
             best = (regret, mse)
-            ScoredDeploymentPolicy(model, mean, scale, device='cuda').save(
+            ScoredDeploymentPolicy(model, mean, scale, device=args.device).save(
                 output / 'best_holdout.pt', training_seed=args.seed, epoch=epoch + 1,
                 optimizer_updates=updates, run_id=args.run_id, loss=args.loss)
             state['selected_epoch'] = epoch + 1
@@ -128,7 +134,8 @@ def main():
     policy.save(output / 'selected_model.pt', training_seed=args.seed, run_id=args.run_id,
                 selected_epoch=state['selected_epoch'], loss=args.loss,
                 training_from_scratch=True, training_epochs=args.epochs,
-                config_sha256=REFERENCE_SHA, data_sha256=hashlib.sha256(Path(args.data).read_bytes()).hexdigest())
+                config_sha256=actual_config_sha, original_reference_sha256=REFERENCE_SHA,
+                training_device=args.device, data_sha256=hashlib.sha256(Path(args.data).read_bytes()).hexdigest())
     state.update(status='confirming', selected_margin=policy.margin,
                  model_sha256=hashlib.sha256((output / 'selected_model.pt').read_bytes()).hexdigest(),
                  data_sha256=hashlib.sha256(Path(args.data).read_bytes()).hexdigest(),
