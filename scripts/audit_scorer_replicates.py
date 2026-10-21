@@ -19,6 +19,7 @@ NAMES = ('learned', 'static_heuristic', 'heuristic', 'obs_heuristic')
 def compare(metrics, minimum):
     assert set(metrics) == set(NAMES)
     assert all(m['episodes'] >= minimum for m in metrics.values())
+    assert all(np.isfinite(value) for m in metrics.values() for value in m.values())
     assert len({m['episodes'] for m in metrics.values()}) == 1
     comparator = max(NAMES[1:], key=lambda n:metrics[n]['success_rate_pct'])
     learned, baseline = metrics['learned'], metrics[comparator]
@@ -76,13 +77,16 @@ def audit_one(seed, folder, data_path, fresh_path, expected_data_seed, episodes=
     fm = {name:json.loads((fresh_path/(name+'.json')).read_text()) for name in NAMES}
     assert fm == fresh['evaluations'] and all(m['seed_start'] == fresh_seed for m in fm.values())
     c,f = compare(confirmation,50),compare(fm,100)
+    evaluation_metrics = [v['metrics'] for v in state['validation']] + list(confirmation.values()) + list(fm.values())
+    evaluation_cost = dict(episodes=sum(m['episodes'] for m in evaluation_metrics),
+                           actual_environment_steps=sum(round(m['episodes']*m['mean_episode_steps']) for m in evaluation_metrics))
     assert c['passes'] == state['comparison']['passes_this_cohort']
     assert f['passes'] == fresh['comparison']['passes_this_cohort']
     return dict(training_seed=seed, run_id=state['run_id'], model_sha256=sha(model),data_sha256=data_sha,
                 model=str(model.resolve()), training_evidence_sha256=sha(folder/'status.json'),
                 fresh_evidence_sha256=sha(fresh_path/'status.json'), selected_epoch=state['selected_epoch'],
                 selected_margin=state['selected_margin'], training_runtime=state.get('runtime',{'training_device':'cuda'}),
-                data_cost=dm, training_elapsed_seconds=state['elapsed_seconds'],
+                data_cost=dm, evaluation_cost=evaluation_cost, training_elapsed_seconds=state['elapsed_seconds'],
                 confirmation=c, fresh=f, passes=c['passes'] and f['passes'])
 
 
@@ -112,14 +116,34 @@ def main():
                               replicas/f'fresh{args.fresh_seed}_seed{seed}',args.data_seeds[seed-42],
                               args.data_episodes,args.confirmation_seed,args.fresh_seed))
     assert len({r['data_sha256'] for r in rows}) == 3 and len({r['model_sha256'] for r in rows}) == 3
+    comparator_drifts=[]
+    for phase in ('confirmation','fresh'):
+        for comparator in NAMES[1:]:
+            reference = rows[0][phase]['metrics'][comparator]
+            for row in rows[1:]:
+                actual = row[phase]['metrics'][comparator]
+                for key,value in reference.items():
+                    if key != 'elapsed_seconds':
+                        discrete_rate = key.endswith('_pct') or key in ('episodes','seed_start','mean_episode_steps')
+                        tolerance = 1e-10 if discrete_rate else 1e-6
+                        assert np.isclose(value,actual[key],rtol=tolerance,atol=tolerance), (phase,comparator,key)
+                        if value != actual[key]:
+                            comparator_drifts.append(dict(training_seed=row['training_seed'],phase=phase,
+                                                          comparator=comparator,metric=key,
+                                                          absolute_difference=abs(value-actual[key])))
+    source42=json.loads((base/'status.json').read_text()).get('source_commit')
     result=dict(status='complete',audited_at=datetime.now(timezone.utc).isoformat(),
                 original_fixed_environment=True,original_reference_sha256=REFERENCE_SHA,
                 environment_manifest_sha256=sha(Path(__file__).resolve().parents[1]/'experiments/server_20261021/fixed_hybrid_environment_manifest.json'),
                 learned_component='whole-deployment selection from observation only',
                 mobility_component='shared analytical velocity-braking controller; no learned mobility claim',
+                source_versions=dict(seed42=source42,replicas=control['source_commit']),
+                comparator_metrics_equivalent_across_training_seeds=True, comparator_numerical_drifts=comparator_drifts,
                 independent_training_seeds=[42,43,44],all_requirements_pass=all(r['passes'] for r in rows),runs=rows,
                 minimum_completion_margin_pp=min(min(r[k]['completion_margin_percentage_points'] for k in ('confirmation','fresh')) for r in rows),
                 dataset_cost_total=dict(real_environment_interactions=args.data_episodes*40*3,counterfactual_simulator_steps=args.data_episodes*40*8*3),
+                evaluation_cost_total=dict(episodes=sum(r['evaluation_cost']['episodes'] for r in rows),
+                                           actual_environment_steps=sum(r['evaluation_cost']['actual_environment_steps'] for r in rows)),
                 runtime_caveat='Inspect per-run training_runtime; all fresh cohorts evaluated locally; no claim of cross-runtime bitwise equivalence',
                 experiment_tracking='Actual local run IDs; W&B publication remains separate and is not claimed here')
     assert not Path(args.output).exists()

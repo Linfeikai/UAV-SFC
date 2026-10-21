@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from scripts.scorer_replicate import FROZEN_SHA, verify_fresh_gate
+from scripts.audit_scorer_replicates import compare
 
 
 class ReplicationGateTests(unittest.TestCase):
@@ -27,6 +28,16 @@ class ReplicationGateTests(unittest.TestCase):
                 path.write_text(json.dumps(modified))
                 with self.assertRaises(AssertionError):
                     verify_fresh_gate(path)
+
+    def test_audit_uses_unrounded_margin_and_rejects_nonfinite_metrics(self):
+        metrics=self.evidence()['evaluations']
+        metrics['learned']['success_rate_pct']=53.499999999
+        self.assertFalse(compare(metrics,100)['passes'])
+        metrics['learned']['success_rate_pct']=53.5
+        self.assertTrue(compare(metrics,100)['passes'])
+        metrics['learned']['mean_episode_reward']=float('nan')
+        with self.assertRaises(AssertionError):
+            compare(metrics,100)
 
     def test_short_cohort_or_changed_checkpoint_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
