@@ -1,0 +1,327 @@
+{
+  "status": "complete",
+  "started": "2026-10-21T07:16:49.393346+00:00",
+  "pid": 44588,
+  "source_commit": "6d06e6024c07a3c0c212493ac6fe57e4ba030462",
+  "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+  "arguments": {
+    "config": "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+    "fresh_gate": "D:/UAV-SFC/experiments/server_20261021/scorer_scale1000_seed42/fresh92000_seed42/status.json",
+    "output": "D:/UAV-SFC/experiments/server_20261021/scorer_scale1000_replicates_43_44",
+    "device": "cpu",
+    "workers": 4,
+    "parallel_data": true,
+    "seeds": [
+      43,
+      44
+    ],
+    "data_seed_base": 660000,
+    "data_episodes": 1000,
+    "confirmation_seed": 91000,
+    "fresh_seed": 92000,
+    "gate_model_sha": "1b26b5f4d658bfc30d148fb159f3aec70dcf6c5e2170c05ee816e5c60bc3ad0e",
+    "gate_seed": 92000
+  },
+  "fresh_gate_sha256": "4a039b837cf777aa82dbae66a84e5bde34f28ecb798731a7a526ad9c9823e51f",
+  "gate_model_sha256": "1b26b5f4d658bfc30d148fb159f3aec70dcf6c5e2170c05ee816e5c60bc3ad0e",
+  "frozen_protocol": {
+    "episodes": 1000,
+    "epochs": 50,
+    "loss": "ranking",
+    "validation_seed": 18000,
+    "validation_episodes": 20,
+    "confirmation_seed": 91000,
+    "confirmation_episodes": 50,
+    "fresh_seed": 92000,
+    "fresh_episodes": 100
+  },
+  "runs": {
+    "43": {
+      "run_id": "0b2c75ef",
+      "training_seed": 43,
+      "data_seed": 660000,
+      "training_from_scratch": true,
+      "data": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\data_seed43.npz",
+      "data_evidence": {
+        "status": "complete",
+        "pid": 47868,
+        "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+        "original_reference_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+        "original_environment": true,
+        "episodes": 1000,
+        "seed_start": 660000,
+        "actual_environment_interactions": 40000,
+        "counterfactual_simulator_steps": 320000,
+        "feature_shape": [
+          40000,
+          8,
+          450
+        ],
+        "elapsed_seconds": 617.0939999999828,
+        "file_sha256": "4822b5c54249f703525e8c267e890518fb3e60f7d1e13e4c98286fd5c7c1ce9f",
+        "selected_recipe_counts": [
+          9066,
+          1337,
+          3272,
+          6388,
+          8526,
+          1378,
+          3393,
+          6640
+        ]
+      },
+      "directory": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\ranking_seed43",
+      "confirmation": {
+        "comparator": "static_heuristic",
+        "checks": {
+          "confirmation_size": true,
+          "completion_margin": true,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": true,
+        "completion_margin_percentage_points": 0.6334796488427799,
+        "reward_margin": 9.30523686408992
+      },
+      "model_sha256": "f26458cd5f4f2b6d9e3acbaeff00c7332e171f7b9a6578ebaa34fd4af1786fa0",
+      "fresh": {
+        "comparator": "static_heuristic",
+        "checks": {
+          "confirmation_size": true,
+          "completion_margin": true,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": true,
+        "completion_margin_percentage_points": 0.7237154051558434,
+        "reward_margin": 10.506079818010676
+      }
+    },
+    "44": {
+      "run_id": "176580e8",
+      "training_seed": 44,
+      "data_seed": 670000,
+      "training_from_scratch": true,
+      "data": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\data_seed44.npz",
+      "data_evidence": {
+        "status": "complete",
+        "pid": 29352,
+        "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+        "original_reference_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+        "original_environment": true,
+        "episodes": 1000,
+        "seed_start": 670000,
+        "actual_environment_interactions": 40000,
+        "counterfactual_simulator_steps": 320000,
+        "feature_shape": [
+          40000,
+          8,
+          450
+        ],
+        "elapsed_seconds": 616.8439999999828,
+        "file_sha256": "3b9b669e2448042c33a618e8c5540bee3b881ce371c5725c41aad3323f45e778",
+        "selected_recipe_counts": [
+          9502,
+          1345,
+          3248,
+          6085,
+          8521,
+          1269,
+          3258,
+          6772
+        ]
+      },
+      "directory": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\ranking_seed44",
+      "confirmation": {
+        "comparator": "static_heuristic",
+        "checks": {
+          "confirmation_size": true,
+          "completion_margin": true,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": true,
+        "completion_margin_percentage_points": 0.6235035913806897,
+        "reward_margin": 9.226853296756872
+      },
+      "model_sha256": "ad8bdb9fd65b09ac18603d741f458b8619641e2f898f17b174d80a810fb87ad7",
+      "fresh": {
+        "comparator": "static_heuristic",
+        "checks": {
+          "confirmation_size": true,
+          "completion_margin": true,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": true,
+        "completion_margin_percentage_points": 0.6738039979037254,
+        "reward_margin": 9.771688604355063
+      }
+    }
+  },
+  "elapsed_seconds": 804.6410000000033,
+  "commands": [
+    {
+      "label": "data43",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60\\scripts\\collect_scorer_data.py",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\data_seed43.npz",
+        "--episodes",
+        "1000",
+        "--seed",
+        "660000",
+        "--workers",
+        "4"
+      ],
+      "pid": 47868,
+      "started": "2026-10-21T07:16:49.398747+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "data44",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60\\scripts\\collect_scorer_data.py",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\data_seed44.npz",
+        "--episodes",
+        "1000",
+        "--seed",
+        "670000",
+        "--workers",
+        "4"
+      ],
+      "pid": 29352,
+      "started": "2026-10-21T07:16:49.402763+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "train43",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60\\scripts\\train_placement_scorer.py",
+        "--data",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\data_seed43.npz",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\ranking_seed43",
+        "--run-id",
+        "0b2c75ef",
+        "--loss",
+        "ranking",
+        "--seed",
+        "43",
+        "--epochs",
+        "50",
+        "--device",
+        "cpu",
+        "--validation-seed",
+        "18000",
+        "--validation-episodes",
+        "20",
+        "--confirmation-seed",
+        "91000",
+        "--confirmation-episodes",
+        "50"
+      ],
+      "pid": 40280,
+      "started": "2026-10-21T07:27:10.510713+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "train44",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60\\scripts\\train_placement_scorer.py",
+        "--data",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\data_seed44.npz",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\ranking_seed44",
+        "--run-id",
+        "176580e8",
+        "--loss",
+        "ranking",
+        "--seed",
+        "44",
+        "--epochs",
+        "50",
+        "--device",
+        "cpu",
+        "--validation-seed",
+        "18000",
+        "--validation-episodes",
+        "20",
+        "--confirmation-seed",
+        "91000",
+        "--confirmation-episodes",
+        "50"
+      ],
+      "pid": 57512,
+      "started": "2026-10-21T07:27:10.521415+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "fresh43",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60\\scripts\\evaluate_scorer_cohort.py",
+        "--root",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--model",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\ranking_seed43\\selected_model.pt",
+        "--expected-sha256",
+        "f26458cd5f4f2b6d9e3acbaeff00c7332e171f7b9a6578ebaa34fd4af1786fa0",
+        "--run-id",
+        "0b2c75ef_fresh",
+        "--seed",
+        "92000",
+        "--episodes",
+        "100",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\fresh92000_seed43"
+      ],
+      "pid": 52504,
+      "started": "2026-10-21T07:29:30.835462+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "fresh44",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60\\scripts\\evaluate_scorer_cohort.py",
+        "--root",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_replicas_local_6d06e60",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--model",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\ranking_seed44\\selected_model.pt",
+        "--expected-sha256",
+        "ad8bdb9fd65b09ac18603d741f458b8619641e2f898f17b174d80a810fb87ad7",
+        "--run-id",
+        "176580e8_fresh",
+        "--seed",
+        "92000",
+        "--episodes",
+        "100",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_replicates_43_44\\fresh92000_seed44"
+      ],
+      "pid": 53720,
+      "started": "2026-10-21T07:29:30.866428+00:00",
+      "exit_code": 0
+    }
+  ],
+  "finished": "2026-10-21T07:30:14.032966+00:00",
+  "all_replicates_pass": true
+}
