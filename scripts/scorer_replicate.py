@@ -41,6 +41,7 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--device', choices=['cpu', 'cuda'], required=True)
     parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--parallel-data', action='store_true')
     parser.add_argument('--seeds', type=int, nargs='+', default=[43,44])
     parser.add_argument('--data-seed-base', type=int, default=630000)
     parser.add_argument('--data-episodes', type=int, default=250)
@@ -58,6 +59,7 @@ def main():
     assert args.confirmation_seed + 50 <= args.fresh_seed
     _, config_sha = load_fixed_reference(args.config)
     assert 1 <= args.workers <= 8
+    assert args.workers * (len(args.seeds) if args.parallel_data else 1) <= 8
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
@@ -91,6 +93,7 @@ def main():
                 raise RuntimeError(f'{label} failed with exit code {code}')
     save()
     try:
+        data_jobs=[]
         for seed in args.seeds:
             run_id = __import__('uuid').uuid4().hex[:8]
             data_seed = args.data_seed_base + (seed - min(args.seeds)) * 10000
@@ -101,7 +104,13 @@ def main():
             command = [sys.executable, str(root/'scripts/collect_scorer_data.py'), '--config', args.config,
                        '--output', str(dataset), '--episodes', str(args.data_episodes), '--seed', str(data_seed),
                        '--workers', str(args.workers)]
-            wait_all([(f'data{seed}', launch(f'data{seed}', command))])
+            child = launch(f'data{seed}', command)
+            data_jobs.append((seed,child,dataset,data_seed))
+            if not args.parallel_data:
+                wait_all([(f'data{seed}', child)])
+        if args.parallel_data:
+            wait_all([(f'data{seed}',child) for seed,child,_,_ in data_jobs])
+        for seed,child,dataset,data_seed in data_jobs:
             metadata = json.loads(dataset.with_suffix('.json').read_text())
             assert metadata['file_sha256'] == sha(dataset)
             assert metadata['episodes'] == args.data_episodes and metadata['seed_start'] == data_seed

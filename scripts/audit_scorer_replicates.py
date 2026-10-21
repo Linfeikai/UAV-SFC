@@ -30,14 +30,17 @@ def compare(metrics, minimum):
                 reward_margin=learned['mean_episode_reward']-baseline['mean_episode_reward'], metrics=metrics)
 
 
-def audit_one(seed, folder, data_path, fresh_path, expected_data_seed):
+def audit_one(seed, folder, data_path, fresh_path, expected_data_seed, episodes=250, confirmation_seed=19000, fresh_seed=90000):
     state = json.loads((folder/'status.json').read_text())
     assert state['status'] == 'complete' and state['training_from_scratch'] and not state['diagnostic_only']
     args = state['arguments']
     assert args['seed'] == seed and args['epochs'] == 50 and args['loss'] == 'ranking'
     assert args['validation_seed'] == 18000 and args['validation_episodes'] == 20
-    assert args['confirmation_seed'] == 19000 and args['confirmation_episodes'] == 50
-    assert len(state['history']) == 50 and state['full_optimizer_updates'] == 3150
+    assert args['confirmation_seed'] == confirmation_seed and args['confirmation_episodes'] == 50
+    assert state['selected_epoch'] == min(state['history'],key=lambda h:(h['holdout_reward_regret'],h['holdout_mse']))['epoch']
+    best_margin = max(state['validation'],key=lambda v:(v['metrics']['crash_episode_rate_pct'] <= 5,v['metrics']['success_rate_pct'],v['metrics']['mean_episode_reward']))['margin']
+    assert state['selected_margin'] == best_margin
+    assert len(state['history']) == 50 and state['full_optimizer_updates'] == ((episodes - max(1, episodes//5))*40 + 127)//128*50
     assert 'resume_model' not in args
     model = folder/'selected_model.pt'
     assert sha(model) == state['model_sha256']
@@ -55,23 +58,23 @@ def audit_one(seed, folder, data_path, fresh_path, expected_data_seed):
     dm = json.loads(data_path.with_suffix('.json').read_text())
     assert dm['status'] == 'complete' and dm['file_sha256'] == data_sha
     assert dm['config_sha256'] in (REFERENCE_SHA,EQUIVALENT_REFERENCE_SHA)
-    assert dm['episodes'] == 250 and dm['seed_start'] == expected_data_seed
-    assert dm['actual_environment_interactions'] == 10000 and dm['counterfactual_simulator_steps'] == 80000
+    assert dm['episodes'] == episodes and dm['seed_start'] == expected_data_seed
+    assert dm['actual_environment_interactions'] == episodes*40 and dm['counterfactual_simulator_steps'] == episodes*40*8
     with np.load(data_path) as data:
-        assert data['features'].shape == (10000,8,450) and data['rewards'].shape == (10000,8)
+        assert data['features'].shape == (episodes*40,8,450) and data['rewards'].shape == (episodes*40,8)
         assert np.isfinite(data['features']).all() and np.isfinite(data['rewards']).all()
         ids, counts = np.unique(data['episode_ids'],return_counts=True)
-        assert np.array_equal(ids,np.arange(expected_data_seed,expected_data_seed+250))
+        assert np.array_equal(ids,np.arange(expected_data_seed,expected_data_seed+episodes))
         assert (counts == 40).all()
     confirmation = {name:json.loads((folder/(name+'.json')).read_text()) for name in NAMES}
     assert confirmation == state['confirmation']
-    assert all(m['seed_start'] == 19000 for m in confirmation.values())
+    assert all(m['seed_start'] == confirmation_seed for m in confirmation.values())
     fresh = json.loads((fresh_path/'status.json').read_text())
     assert fresh['status'] == 'complete' and fresh['model_sha256'] == sha(model)
     assert fresh['config_sha256'] in (REFERENCE_SHA,EQUIVALENT_REFERENCE_SHA)
-    assert fresh['seed_start'] == 90000 and fresh['episodes'] == 100
+    assert fresh['seed_start'] == fresh_seed and fresh['episodes'] == 100
     fm = {name:json.loads((fresh_path/(name+'.json')).read_text()) for name in NAMES}
-    assert fm == fresh['evaluations'] and all(m['seed_start'] == 90000 for m in fm.values())
+    assert fm == fresh['evaluations'] and all(m['seed_start'] == fresh_seed for m in fm.values())
     c,f = compare(confirmation,50),compare(fm,100)
     assert c['passes'] == state['comparison']['passes_this_cohort']
     assert f['passes'] == fresh['comparison']['passes_this_cohort']
@@ -89,15 +92,25 @@ def main():
     parser.add_argument('--fresh42',required=True)
     parser.add_argument('--replicates',required=True)
     parser.add_argument('--output',required=True)
+    parser.add_argument('--data-episodes',type=int,default=250)
+    parser.add_argument('--data-seeds',type=int,nargs=3,default=[620000,630000,640000])
+    parser.add_argument('--confirmation-seed',type=int,default=19000)
+    parser.add_argument('--fresh-seed',type=int,default=90000)
+    parser.add_argument('--seed42-folder',default='scorer_ranking')
     args=parser.parse_args()
     base=Path(args.evidence42)
     replicas=Path(args.replicates)
     control=json.loads((replicas/'status.json').read_text())
     assert control['status'] == 'complete'
-    rows=[audit_one(42,base/'scorer_ranking',base/'data_seed42.npz',Path(args.fresh42),620000)]
+    assert len(set(args.data_seeds)) == 3
+    for i,a in enumerate(args.data_seeds):
+        assert all(abs(a-b) >= args.data_episodes for b in args.data_seeds[i+1:])
+    rows=[audit_one(42,base/args.seed42_folder,base/'data_seed42.npz',Path(args.fresh42),args.data_seeds[0],
+                    args.data_episodes,args.confirmation_seed,args.fresh_seed)]
     for seed in (43,44):
         rows.append(audit_one(seed,replicas/f'ranking_seed{seed}',replicas/f'data_seed{seed}.npz',
-                              replicas/f'fresh90000_seed{seed}',(seed+20)*10000))
+                              replicas/f'fresh{args.fresh_seed}_seed{seed}',args.data_seeds[seed-42],
+                              args.data_episodes,args.confirmation_seed,args.fresh_seed))
     assert len({r['data_sha256'] for r in rows}) == 3 and len({r['model_sha256'] for r in rows}) == 3
     result=dict(status='complete',audited_at=datetime.now(timezone.utc).isoformat(),
                 original_fixed_environment=True,original_reference_sha256=REFERENCE_SHA,
@@ -106,8 +119,8 @@ def main():
                 mobility_component='shared analytical velocity-braking controller; no learned mobility claim',
                 independent_training_seeds=[42,43,44],all_requirements_pass=all(r['passes'] for r in rows),runs=rows,
                 minimum_completion_margin_pp=min(min(r[k]['completion_margin_percentage_points'] for k in ('confirmation','fresh')) for r in rows),
-                dataset_cost_total=dict(real_environment_interactions=30000,counterfactual_simulator_steps=240000),
-                runtime_caveat='42 trained on server CUDA; 43/44 on explicitly selected local CPU; all fresh cohorts evaluated locally',
+                dataset_cost_total=dict(real_environment_interactions=args.data_episodes*40*3,counterfactual_simulator_steps=args.data_episodes*40*8*3),
+                runtime_caveat='Inspect per-run training_runtime; all fresh cohorts evaluated locally; no claim of cross-runtime bitwise equivalence',
                 experiment_tracking='Actual local run IDs; W&B publication remains separate and is not claimed here')
     assert not Path(args.output).exists()
     atomic_json(Path(args.output),result)
