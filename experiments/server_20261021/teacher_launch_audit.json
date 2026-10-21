@@ -1,0 +1,50 @@
+{
+  "status": "running",
+  "started": "2026-10-21T05:14:47.012670+00:00",
+  "source_commit": "af7549f",
+  "outer_controller": {
+    "pid": 7547,
+    "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+    "start_ticks": 283923337,
+    "state": "S",
+    "command": [
+      "/root/autodl-tmp/uav-sfc-venv/bin/python",
+      "scripts/teacher_training.py",
+      "--plan",
+      "/root/autodl-tmp/UAV-SFC-teacher-af7549f/teacher_plan.json"
+    ],
+    "alive": true
+  },
+  "source_model_sha256": "305a91138c1afa83c330840c68e5e61720d0dc4df25ed56be3d3ab4a16ab2d91",
+  "environment_equals_original": true,
+  "runs": [
+    {
+      "algorithm": "FIXED_SMART_TEACHER",
+      "run_id": "c6ae7a2b",
+      "status": "training",
+      "folder": "/root/autodl-tmp/UAV-SFC-teacher-af7549f/server_runs/teacher_smart_adapt20k_seed42",
+      "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+      "teacher": "smart",
+      "new_train_steps": 20000,
+      "fresh_warmup": 5000,
+      "bc_pretrain_steps": 1000,
+      "q_coefficient": 0.01,
+      "bc_coefficient": 1.0,
+      "mobility_bc_coefficient": 4.0
+    },
+    {
+      "algorithm": "FIXED_LOOKAHEAD_TEACHER",
+      "run_id": "c3e31218",
+      "status": "training",
+      "folder": "/root/autodl-tmp/UAV-SFC-teacher-af7549f/server_runs/teacher_lookahead_adapt20k_seed42",
+      "config_sha256": "a495d0e2a77ea909d41c99261edc07a5775cb2e3c4f95d14588a8085940333b5",
+      "teacher": "lookahead",
+      "new_train_steps": 20000,
+      "fresh_warmup": 5000,
+      "bc_pretrain_steps": 1000,
+      "q_coefficient": 0.01,
+      "bc_coefficient": 1.0,
+      "mobility_bc_coefficient": 4.0
+    }
+  ]
+}
