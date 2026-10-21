@@ -1,0 +1,44 @@
+{
+  "status": "complete",
+  "root": "/root/autodl-tmp/UAV-SFC-scorer-b558053",
+  "source_commit": "b558053",
+  "output": "/root/autodl-tmp/UAV-SFC-scorer-b558053/server_runs/scorer_search_20261021",
+  "reference_config": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_20k_seed42/.hydra/config.yaml",
+  "parent_evidence": "/root/autodl-tmp/UAV-SFC-teacher-af7549f/teacher_final_audit.json",
+  "parent_evidence_sha256": "99a99295ed185572ac9b589a0715f078433fccf90f0780590e811ae5ecb4fc98",
+  "candidate_evidence": "/root/autodl-tmp/placement_candidate_screen_20261021.json",
+  "candidate_evidence_sha256": "adf73e9675b1916851776b1924f0230d8b849ccc05c393bbbed6af2caaef7ea7",
+  "max_parallel": 2,
+  "data_episodes": 250,
+  "data_seed": 620000,
+  "training_seed": 42,
+  "epochs": 50,
+  "validation_seed": 18000,
+  "validation_episodes": 20,
+  "confirmation_seed": 19000,
+  "confirmation_episodes": 50,
+  "model_family": "learned_whole_deployment_scorer",
+  "motion_controller": "explicit_analytical_velocity_braking",
+  "from_scratch": true,
+  "final_seed_and_scratch_replicates_required": true,
+  "runs": [
+    {
+      "variant": "SCORER_REGRESSION",
+      "loss": "regression",
+      "run_id": "2b7a335f",
+      "url": "local-run:2b7a335f",
+      "tracking_status": "local_actual_run_then_publish_to_wandb_after_science",
+      "run_id_status": "actual_local_run_complete"
+    },
+    {
+      "variant": "SCORER_RANKING",
+      "loss": "ranking",
+      "run_id": "8bd78fed",
+      "url": "local-run:8bd78fed",
+      "tracking_status": "local_actual_run_then_publish_to_wandb_after_science",
+      "run_id_status": "actual_local_run_complete"
+    }
+  ],
+  "started": "2026-10-21T06:11:14.310888+00:00",
+  "finished": "2026-10-21T06:13:06.994452+00:00"
+}

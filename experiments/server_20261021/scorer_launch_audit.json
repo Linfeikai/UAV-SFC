@@ -1,0 +1,40 @@
+{
+  "source_commit": "b558053",
+  "controller": {
+    "pid": 10094,
+    "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+    "start_ticks": 284262311,
+    "state": "S",
+    "command": [
+      "/root/autodl-tmp/uav-sfc-venv/bin/python",
+      "scripts/scorer_search.py",
+      "--plan",
+      "/root/autodl-tmp/UAV-SFC-scorer-b558053/scorer_plan.json"
+    ],
+    "alive": true,
+    "required_arg": "/root/autodl-tmp/UAV-SFC-scorer-b558053/scorer_plan.json"
+  },
+  "watcher": {
+    "pid": 10164,
+    "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+    "start_ticks": 284269455,
+    "state": "R",
+    "command": [
+      "/root/autodl-tmp/uav-sfc-venv/bin/python",
+      "scripts/experiment_monitor.py",
+      "watch",
+      "--config",
+      "/root/autodl-tmp/UAV-SFC-scorer-b558053/scorer_monitor_config.json"
+    ],
+    "alive": true
+  },
+  "started": "2026-10-21T06:11:14.310888+00:00",
+  "status": "running",
+  "plan_sha256": "1b4a84db9c430f1117406a3c77aeb199fd5cd3f8e6217ca03666dc005c12ab4e",
+  "model_family": "learned_deployment_scoring",
+  "motion": "explicit_analytical_braking",
+  "run_ids": [
+    "2b7a335f",
+    "8bd78fed"
+  ]
+}
