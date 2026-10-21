@@ -1,0 +1,14 @@
+[
+  {
+    "categorical_q_coef": 0.01,
+    "mobility_bc_coef": 4.0,
+    "share_features_extractor": false,
+    "canonical_critic_uavs": 4
+  },
+  {
+    "categorical_q_coef": 0.05,
+    "mobility_bc_coef": 4.0,
+    "share_features_extractor": false,
+    "canonical_critic_uavs": 4
+  }
+]
