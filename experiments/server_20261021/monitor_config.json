@@ -3,6 +3,6 @@
   "port": 14379,
   "user": "root",
   "identity_file": "C:/Users/30395/.ssh/uav_sfc_monitor_20261021",
-  "pipeline": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_pipeline_20261021",
-  "cache_dir": "D:/UAV-SFC/experiments/server_20261021/resume_monitor_cache"
+  "pipeline": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_search_20261021",
+  "cache_dir": "D:/UAV-SFC/experiments/server_20261021/q_monitor_cache"
 }

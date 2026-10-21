@@ -1,0 +1,214 @@
+{
+  "observed_at": "2026-10-21T03:58:39.443206+00:00",
+  "source_commit": "8981a9b",
+  "root": "/root/autodl-tmp/UAV-SFC-q-8981a9b",
+  "source_config_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+  "runs": [
+    {
+      "run_id": "0c97d31d",
+      "directory": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q001_50k_seed42",
+      "status": "training",
+      "config_sha256": "767fbce53936c014b2d957ee058305406b8a4ad11d49dc3e97aef419e1e52e54",
+      "fixed_setting_checks": {
+        "env": true,
+        "uav": true,
+        "reward": true
+      },
+      "diffusion_difference": {
+        "categorical_q_coef": {
+          "original": 0.0,
+          "actual": 0.01
+        }
+      },
+      "validation_history": [
+        {
+          "timesteps": 0,
+          "seed": 7000,
+          "episodes": 5,
+          "improved": true,
+          "metrics": {
+            "episodes": 5,
+            "mean_episode_reward": 647.7805084991456,
+            "success_rate_pct": 51.162790697674424,
+            "admission_efficiency_pct": 90.87779690189329,
+            "pick_rate_pct": 56.298449612403104,
+            "drop_rate_pct": 45.348837209302324,
+            "timeout_rate_pct": 3.488372093023256,
+            "mean_energy_j_per_step": 765.4980031274363,
+            "mean_episode_steps": 40.0,
+            "crash_episode_rate_pct": 0.0,
+            "minimum_battery_ratio": 0.7052749364450801,
+            "low_battery_uav_step_rate_pct": 0.0,
+            "charged_step_rate_pct": 0.0,
+            "mean_harvested_j_per_episode": 0.0,
+            "mean_placement_affinity": 1.0,
+            "gpu_vnf_on_gpu_pct": 100.0,
+            "mean_completed_sfc_latency": 2.492262454847214,
+            "mean_abs_mobility_action": 0.13809048671275378,
+            "rms_mobility_action": 0.1734540899742185,
+            "near_zero_mobility_component_pct": 22.5
+          }
+        },
+        {
+          "timesteps": 5000,
+          "seed": 7000,
+          "episodes": 5,
+          "improved": true,
+          "metrics": {
+            "episodes": 5,
+            "mean_episode_reward": 647.5549094963075,
+            "success_rate_pct": 51.21124031007752,
+            "admission_efficiency_pct": 90.96385542168674,
+            "pick_rate_pct": 56.298449612403104,
+            "drop_rate_pct": 44.815891472868216,
+            "timeout_rate_pct": 3.9728682170542635,
+            "mean_energy_j_per_step": 767.5284243692254,
+            "mean_episode_steps": 40.0,
+            "crash_episode_rate_pct": 0.0,
+            "minimum_battery_ratio": 0.705954613673293,
+            "low_battery_uav_step_rate_pct": 0.0,
+            "charged_step_rate_pct": 0.0,
+            "mean_harvested_j_per_episode": 0.0,
+            "mean_placement_affinity": 1.0,
+            "gpu_vnf_on_gpu_pct": 100.0,
+            "mean_completed_sfc_latency": 2.4882307744083687,
+            "mean_abs_mobility_action": 0.13059305429458617,
+            "rms_mobility_action": 0.16316830594161408,
+            "near_zero_mobility_component_pct": 25.374999999999996
+          }
+        },
+        {
+          "timesteps": 10000,
+          "seed": 7000,
+          "episodes": 5,
+          "improved": true,
+          "metrics": {
+            "episodes": 5,
+            "mean_episode_reward": 647.9731079864503,
+            "success_rate_pct": 51.259689922480625,
+            "admission_efficiency_pct": 91.04991394148021,
+            "pick_rate_pct": 56.298449612403104,
+            "drop_rate_pct": 44.622093023255815,
+            "timeout_rate_pct": 4.118217054263566,
+            "mean_energy_j_per_step": 769.1094680487237,
+            "mean_episode_steps": 40.0,
+            "crash_episode_rate_pct": 0.0,
+            "minimum_battery_ratio": 0.7046358671146433,
+            "low_battery_uav_step_rate_pct": 0.0,
+            "charged_step_rate_pct": 0.0,
+            "mean_harvested_j_per_episode": 0.0,
+            "mean_placement_affinity": 1.0,
+            "gpu_vnf_on_gpu_pct": 100.0,
+            "mean_completed_sfc_latency": 2.482651679748725,
+            "mean_abs_mobility_action": 0.1312119707465172,
+            "rms_mobility_action": 0.1644796389456478,
+            "near_zero_mobility_component_pct": 24.0625
+          }
+        }
+      ]
+    },
+    {
+      "run_id": "b184517f",
+      "directory": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q005_50k_seed42",
+      "status": "training",
+      "config_sha256": "3663fe52cc312364be82c27416970b8c18c23b4e76908d39933f97bd1aacf269",
+      "fixed_setting_checks": {
+        "env": true,
+        "uav": true,
+        "reward": true
+      },
+      "diffusion_difference": {
+        "categorical_q_coef": {
+          "original": 0.0,
+          "actual": 0.05
+        }
+      },
+      "validation_history": [
+        {
+          "timesteps": 0,
+          "seed": 7000,
+          "episodes": 5,
+          "improved": true,
+          "metrics": {
+            "episodes": 5,
+            "mean_episode_reward": 647.7805084991456,
+            "success_rate_pct": 51.162790697674424,
+            "admission_efficiency_pct": 90.87779690189329,
+            "pick_rate_pct": 56.298449612403104,
+            "drop_rate_pct": 45.348837209302324,
+            "timeout_rate_pct": 3.488372093023256,
+            "mean_energy_j_per_step": 765.4980031274363,
+            "mean_episode_steps": 40.0,
+            "crash_episode_rate_pct": 0.0,
+            "minimum_battery_ratio": 0.7052749364450801,
+            "low_battery_uav_step_rate_pct": 0.0,
+            "charged_step_rate_pct": 0.0,
+            "mean_harvested_j_per_episode": 0.0,
+            "mean_placement_affinity": 1.0,
+            "gpu_vnf_on_gpu_pct": 100.0,
+            "mean_completed_sfc_latency": 2.492262454847214,
+            "mean_abs_mobility_action": 0.13809048671275378,
+            "rms_mobility_action": 0.1734540899742185,
+            "near_zero_mobility_component_pct": 22.5
+          }
+        },
+        {
+          "timesteps": 5000,
+          "seed": 7000,
+          "episodes": 5,
+          "improved": false,
+          "metrics": {
+            "episodes": 5,
+            "mean_episode_reward": 643.5578470039369,
+            "success_rate_pct": 50.872093023255815,
+            "admission_efficiency_pct": 90.36144578313254,
+            "pick_rate_pct": 56.298449612403104,
+            "drop_rate_pct": 45.39728682170542,
+            "timeout_rate_pct": 3.730620155038759,
+            "mean_energy_j_per_step": 764.8363220778547,
+            "mean_episode_steps": 40.0,
+            "crash_episode_rate_pct": 0.0,
+            "minimum_battery_ratio": 0.7049610231293935,
+            "low_battery_uav_step_rate_pct": 0.0,
+            "charged_step_rate_pct": 0.0,
+            "mean_harvested_j_per_episode": 0.0,
+            "mean_placement_affinity": 1.0,
+            "gpu_vnf_on_gpu_pct": 100.0,
+            "mean_completed_sfc_latency": 2.485106317129834,
+            "mean_abs_mobility_action": 0.1390918515250087,
+            "rms_mobility_action": 0.17332364590854624,
+            "near_zero_mobility_component_pct": 22.1875
+          }
+        },
+        {
+          "timesteps": 10000,
+          "seed": 7000,
+          "episodes": 5,
+          "improved": false,
+          "metrics": {
+            "episodes": 5,
+            "mean_episode_reward": 645.082714920044,
+            "success_rate_pct": 51.01744186046512,
+            "admission_efficiency_pct": 90.61962134251291,
+            "pick_rate_pct": 56.298449612403104,
+            "drop_rate_pct": 45.15503875968992,
+            "timeout_rate_pct": 3.827519379844961,
+            "mean_energy_j_per_step": 765.9216434808073,
+            "mean_episode_steps": 40.0,
+            "crash_episode_rate_pct": 0.0,
+            "minimum_battery_ratio": 0.7062710609643235,
+            "low_battery_uav_step_rate_pct": 0.0,
+            "charged_step_rate_pct": 0.0,
+            "mean_harvested_j_per_episode": 0.0,
+            "mean_placement_affinity": 1.0,
+            "gpu_vnf_on_gpu_pct": 100.0,
+            "mean_completed_sfc_latency": 2.5093595419164485,
+            "mean_abs_mobility_action": 0.14010960396379232,
+            "rms_mobility_action": 0.176702777968541,
+            "near_zero_mobility_component_pct": 24.9375
+          }
+        }
+      ]
+    }
+  ]
+}

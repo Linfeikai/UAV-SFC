@@ -1,5 +1,5 @@
 {
-  "status": "approved_not_launched",
+  "status": "launched",
   "reason": "If the completed fixed-configuration 50k continuation still fails, test whether adding a categorical placement Q objective improves on pure placement imitation. These two runs change only categorical_q_coef and use the same 20k source checkpoint, 30k additional learning, brake teacher, mobility anchor and fixed physics/reward.",
   "source_commit": "8981a9b",
   "root": "/root/autodl-tmp/UAV-SFC-q-8981a9b",
@@ -40,7 +40,7 @@
         "exp_name=stationary_q001_50k_seed42",
         "hydra.run.dir=/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q001_50k_seed42"
       ],
-      "run_id_status": "reserved_not_started"
+      "run_id_status": "training_confirmed"
     },
     {
       "variant": "STATIONARY_Q005",
@@ -69,7 +69,7 @@
         "exp_name=stationary_q005_50k_seed42",
         "hydra.run.dir=/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q005_50k_seed42"
       ],
-      "run_id_status": "reserved_not_started"
+      "run_id_status": "training_confirmed"
     }
   ],
   "additional_confirmation_command": [
@@ -89,7 +89,7 @@
     "zero"
   ],
   "notes": [
-    "Prepared only; do not launch before the current 50k wrapper and its static comparator complete and results justify the mechanism change.",
+    "Launched after the unchanged continuation and 50-episode static comparator completed; q_decision.json records the measured gate. Source plan on the running server is preserved verbatim.",
     "The actor placement head currently has categorical_q_coef=0, so it receives supervised imitation and entropy objectives but no direct categorical Q objective. Coefficients 0.01 and 0.05 are controlled probes, not claimed improvements.",
     "Both candidates use independent output directories, source checkpoint 20k plus 30k new training transitions, fresh 5000-step warmup and bc_pretrain_steps=0.",
     "Validation screens 7000-7009, confirmation 8000-8049, and a future untouched cohort must remain separate.",
@@ -102,5 +102,6 @@
     "secondary_evidence_sha256": "e81a8191e32dcbd83666a9d71d321ef98bd327cb5f5e4fee7dafc4eb3acfeaf7"
   },
   "control_output": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_control_20261021",
-  "decision_file": "/root/autodl-tmp/UAV-SFC-q-8981a9b/q_decision.json"
+  "decision_file": "/root/autodl-tmp/UAV-SFC-q-8981a9b/q_decision.json",
+  "launched_at": "2026-10-21T03:51:16.457901+00:00"
 }

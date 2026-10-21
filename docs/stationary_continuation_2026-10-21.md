@@ -9,7 +9,7 @@
 | 策略 | 完成率 % | 坠毁率 % | 平均回报 | 能耗 J/step | 存活步数 | 已完成 SFC 平均时延（环境时间单位） |
 |---|---:|---:|---:|---:|---:|---:|
 | 学习模型（20k 所选 checkpoint） | 52.7273 | 0.0000 | 643.8442 | 765.2367 | 40.0000 | 2.4574 |
-| 静态全状态零移动启发式 | 53.1241 | 0.0000 | 648.9748 | 769.0846 | 40.0000 | 2.4536 |
+| 静态全状态零移动启发式 | 53.1241 | 0.0000 | 648.9745 | 769.0846 | 40.0000 | 2.4536 |
 | 全状态启发式 | 48.9906 | 12.0000 | 584.1754 | 2438.3557 | 39.6800 | 2.5009 |
 | 仅观测启发式 | 47.8608 | 16.0000 | 564.2583 | 2607.1432 | 39.5000 | 2.4365 |
 
@@ -17,14 +17,14 @@
 
 基于安全性、40 步存活和与最强对照接近的差距，决策文件 `experiments/server_20261021/continuation_decision.json` 允许原定有界 30k 续训。初次预检查因 Windows Git 归档输出 CRLF、预期 Git blob 为 LF 而停止，尚未开始任何 episode；已核对规范化归档与 Git 原文完全一致，并保留原始与规范化哈希。该预检查记录单独保存，不算作训练失败。
 
-## 当前续训
+## 原配置有界续训（已完成）
 
 - 科学源码独立导出版本 `c5bd80a`，根目录 `/root/autodl-tmp/UAV-SFC-eval-c5bd80a`。未覆盖原 `e150a29` 科学源和 checkpoint；main、算法、环境与原版本一致，新评估器补充静态对照并禁止对学习模型强制零运动。
 - W&B run `f3b92a71` 已真实启动；日志确认加载 20000 步源模型、重新填充 5000 步 replay warmup，`bc_pretrain_steps=0`。
 - 计划 `experiments/server_20261021/resume_plan.json`，训练目录 `server_runs/stationary_resume_50k_seed42`，外层控制器目录 `server_runs/stationary_resume_control_20261021`，底层管线目录 `server_runs/stationary_resume_pipeline_20261021`，均位于新源码根目录。
-- SB3 `learn` 默认重置 `num_timesteps`；最终文件的 30000 步是新增训练步，加源 20000 步约为 50k。新 warmup 另产生 5000 步环境交互，旧 replay 未恢复。
+- SB3 `learn` 默认重置 `num_timesteps`；完整训练的最终文件为新增 30000 步，加源 20000 步约为 50k预算；验证所选文件实际为新增15000步，累计约35k。新 warmup 另产生 5000 步环境交互，旧 replay 未恢复。
 - 训练保留原 Stationary 配置、`env=heterogeneous_hybrid`、奖励、物理限制、8 个并行环境；检查点及5集训练验证每5000步运行。最终候选用5000–5009选择，再用6000–6049进行50集确认，外层自动补齐同种子静态零移动对照。
-- 不将底层管线完成等同于整个实验完成：必须等待外层静态对照、联合目标比较和证据归档；本次更新时尚在训练，不声称达标。
+- 不将底层管线完成等同于整个实验完成：必须等待外层静态对照、联合目标比较和证据归档；原配置外层流程已完整结束，结果见下表。
 - 一次只读检查：`C:/Users/30395/.conda/envs/sfc_env/python.exe scripts/check_experiment.py --config experiments/server_20261021/monitor_config.json`。新只读端点和inotify watcher已验证。连接失败只表示观察不可用，不构成重启训练的依据。
 
 ## 后续
@@ -33,7 +33,7 @@
 
 ## 续训后 50 集结果（已完成）
 
-全流程完成于 2026-10-21 11:47:38（中国时间），耗时 1112.24 秒。30k 新训练步完成，验证选择 `best_validation_model.zip`；所选 archive SHA256 为 `268c8eac98ef12518733d0bf1cd2d2243f3348fc1514b43779267ca8d7fb0cdf`。验证所选 checkpoint 的实际步数需从 archive 读取，不能把全流程50k预算直接当作所选checkpoint的步数。
+全流程完成于 2026-10-21 11:47:38（中国时间），耗时 1112.24 秒。30k 新训练步完成，验证选择 `best_validation_model.zip`；所选 archive SHA256 为 `268c8eac98ef12518733d0bf1cd2d2243f3348fc1514b43779267ca8d7fb0cdf`。本地下载后核验 SHA256 一致；archive `data.num_timesteps=15000`，所选checkpoint为原20k加新增15k，累计约35k（额外warmup交互另计）。原模型archive为20000步。审计记录见 `resume_checkpoint_audit.json`。
 
 | 策略（seeds 6000–6049，各50集） | 完成率 % | 坠毁率 % | 平均回报 | 能耗 J/step | 存活步数 | 已完成 SFC 平均时延 |
 |---|---:|---:|---:|---:|---:|---:|
@@ -45,3 +45,16 @@
 学习模型仍低 0.4883 个百分点和 6.4321 回报，联合目标未达到，不继续盲目延长原配置。已核对原训练和续训的 env、uav、reward 与 diffusion 配置完全相同，只有预先批准的总步数、重新warmup、BC预训练关闭、验证种子和输出等流程字段变化。
 
 对原 Stationary20k 的新 Critic 排名诊断（仅10集验证 seeds7000–7009）中，候选数1/4/16分别得到51.341%/51.415%/51.366%完成率、均0%坠毁；收益很小，不能据此声称泛化提升。原部署头 `categorical_q_coef=0`，因此下一步对照只启用0.01和0.05的部署Q目标，两组各续训30k、保留motion BC=4及其他Stationary参数。构造器恢复检查确认两个Q系数生效、运动锚定和独立/规范化Critic保留。计划 `q_continuation_plan.json`，决策 `q_decision.json`；两组是seed42机制探测，不算独立训练复现。新验证用7000–7009，50集确认用8000–8049；最强同设置静态对照仍需重新评估。
+
+## 两组Q系数对照（运行中）
+
+已于2026-10-21 11:51:16（中国时间）真实启动；科学导出版本 `8981a9b`，独立根目录 `/root/autodl-tmp/UAV-SFC-q-8981a9b`。
+
+| 变体 | categorical_q_coef | 实际W&B run | 训练目录 |
+|---|---:|---|---|
+| STATIONARY_Q001 | 0.01 | 0c97d31d | server_runs/stationary_q001_50k_seed42 |
+| STATIONARY_Q005 | 0.05 | b184517f | server_runs/stationary_q005_50k_seed42 |
+
+两组均从原20k模型开始，新增30k训练预算，各自fresh warmup5000、BC预训练0。只有categorical Q系数不同，环境、奖励、物理和其他Stationary参数保持一致。目录名50k表示预算；最终所选checkpoint必须再次核验archive实际步数。03:55:51UTC只读快照显示7040/6400新步，均在训练；5集早期验证均0坠毁，仅作训练筛查。
+
+当前只读入口 `experiments/server_20261021/q_monitor_config.json`；管线 `server_runs/stationary_q_search_20261021`；外层 `server_runs/stationary_q_control_20261021/status.json`。管线结果之后还要等外层同批静态零移动50集对照完成。旧入口已备份为 `resume_monitor_config.json`，其只读密钥当前已转向Q管线，旧流程通过归档结果核对。自动化已更新到两组实际run与新监控入口，保持无变化静默。启动证据见 `q_launch_snapshot.json`。

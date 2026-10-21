@@ -1,0 +1,20 @@
+{
+  "source_training_steps": 20000,
+  "new_training_budget": 30000,
+  "fresh_warmup_interactions": 5000,
+  "replay_restored": false,
+  "models": [
+    {
+      "path": "experiments/server_20261021/models/stationary_20k_selected.zip",
+      "sha256": "2106f25d3f9b2cfcbdb775d2549fb3322aae72ea45ed322adb0053c083720fa2",
+      "archive_num_timesteps": 20000
+    },
+    {
+      "path": "experiments/server_20261021/stationary_resume_pipeline_20261021/diffusion_stationary_resume/DIFFUSION_STATIONARY_RESUME_final_model.zip",
+      "sha256": "268c8eac98ef12518733d0bf1cd2d2243f3348fc1514b43779267ca8d7fb0cdf",
+      "archive_num_timesteps": 15000
+    }
+  ],
+  "selected_total_training_steps": 35000,
+  "note": "The selected resumed archive has 15000 new steps; do not label this selected checkpoint as 50k. The completed training budget was source20k + new30k."
+}
