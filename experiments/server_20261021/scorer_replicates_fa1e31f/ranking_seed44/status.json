@@ -1,0 +1,640 @@
+{
+  "status": "complete",
+  "started": "2026-10-21T06:51:49.623452+00:00",
+  "pid": 46340,
+  "run_id": "f36c9e56",
+  "arguments": {
+    "data": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_replicates_fa1e31f\\data_seed44.npz",
+    "config": "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+    "output": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_replicates_fa1e31f\\ranking_seed44",
+    "run_id": "f36c9e56",
+    "loss": "ranking",
+    "seed": 44,
+    "device": "cpu",
+    "epochs": 50,
+    "validation_seed": 18000,
+    "validation_episodes": 20,
+    "confirmation_seed": 19000,
+    "confirmation_episodes": 50
+  },
+  "training_from_scratch": true,
+  "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+  "original_reference_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+  "runtime": {
+    "python": "3.10.19",
+    "torch": "2.11.0+cpu",
+    "numpy": "2.2.6",
+    "training_device": "cpu",
+    "execution_host": "Feikai"
+  },
+  "diagnostic_only": false,
+  "learned_component": "whole-deployment scorer",
+  "motion_component": "explicit shared velocity-braking controller",
+  "history": [
+    {
+      "epoch": 1,
+      "optimizer_updates": 63,
+      "mean_training_loss": 0.6156119406223297,
+      "holdout_reward_regret": 0.4925047755241394,
+      "holdout_mse": 1.5488618612289429
+    },
+    {
+      "epoch": 2,
+      "optimizer_updates": 126,
+      "mean_training_loss": 0.48887175132357885,
+      "holdout_reward_regret": 0.40856194496154785,
+      "holdout_mse": 1.0644726753234863
+    },
+    {
+      "epoch": 3,
+      "optimizer_updates": 189,
+      "mean_training_loss": 0.44974060049132697,
+      "holdout_reward_regret": 0.35648876428604126,
+      "holdout_mse": 0.7914908528327942
+    },
+    {
+      "epoch": 4,
+      "optimizer_updates": 252,
+      "mean_training_loss": 0.42567711879336645,
+      "holdout_reward_regret": 0.3107922673225403,
+      "holdout_mse": 0.6964782476425171
+    },
+    {
+      "epoch": 5,
+      "optimizer_updates": 315,
+      "mean_training_loss": 0.41080694491901093,
+      "holdout_reward_regret": 0.31284767389297485,
+      "holdout_mse": 0.6476569771766663
+    },
+    {
+      "epoch": 6,
+      "optimizer_updates": 378,
+      "mean_training_loss": 0.39601813516919576,
+      "holdout_reward_regret": 0.3144329786300659,
+      "holdout_mse": 0.6390503644943237
+    },
+    {
+      "epoch": 7,
+      "optimizer_updates": 441,
+      "mean_training_loss": 0.3835330667003753,
+      "holdout_reward_regret": 0.311653196811676,
+      "holdout_mse": 0.6207984685897827
+    },
+    {
+      "epoch": 8,
+      "optimizer_updates": 504,
+      "mean_training_loss": 0.3736107250054677,
+      "holdout_reward_regret": 0.31838756799697876,
+      "holdout_mse": 0.625083863735199
+    },
+    {
+      "epoch": 9,
+      "optimizer_updates": 567,
+      "mean_training_loss": 0.3652751138285985,
+      "holdout_reward_regret": 0.29979822039604187,
+      "holdout_mse": 0.6107646226882935
+    },
+    {
+      "epoch": 10,
+      "optimizer_updates": 630,
+      "mean_training_loss": 0.35886930615182905,
+      "holdout_reward_regret": 0.32495251297950745,
+      "holdout_mse": 0.6104230284690857
+    },
+    {
+      "epoch": 11,
+      "optimizer_updates": 693,
+      "mean_training_loss": 0.3516007269185687,
+      "holdout_reward_regret": 0.3077217936515808,
+      "holdout_mse": 0.6035537123680115
+    },
+    {
+      "epoch": 12,
+      "optimizer_updates": 756,
+      "mean_training_loss": 0.34488301097400603,
+      "holdout_reward_regret": 0.29683661460876465,
+      "holdout_mse": 0.6020396947860718
+    },
+    {
+      "epoch": 13,
+      "optimizer_updates": 819,
+      "mean_training_loss": 0.33824281701965936,
+      "holdout_reward_regret": 0.32332825660705566,
+      "holdout_mse": 0.6067150831222534
+    },
+    {
+      "epoch": 14,
+      "optimizer_updates": 882,
+      "mean_training_loss": 0.3333135961540162,
+      "holdout_reward_regret": 0.3105226159095764,
+      "holdout_mse": 0.6034854650497437
+    },
+    {
+      "epoch": 15,
+      "optimizer_updates": 945,
+      "mean_training_loss": 0.32746294661173747,
+      "holdout_reward_regret": 0.3049038350582123,
+      "holdout_mse": 0.6064780354499817
+    },
+    {
+      "epoch": 16,
+      "optimizer_updates": 1008,
+      "mean_training_loss": 0.3223467667897542,
+      "holdout_reward_regret": 0.3236771821975708,
+      "holdout_mse": 0.6055508852005005
+    },
+    {
+      "epoch": 17,
+      "optimizer_updates": 1071,
+      "mean_training_loss": 0.31504965632680865,
+      "holdout_reward_regret": 0.31542110443115234,
+      "holdout_mse": 0.5957474708557129
+    },
+    {
+      "epoch": 18,
+      "optimizer_updates": 1134,
+      "mean_training_loss": 0.3102547422287956,
+      "holdout_reward_regret": 0.35123422741889954,
+      "holdout_mse": 0.6180780529975891
+    },
+    {
+      "epoch": 19,
+      "optimizer_updates": 1197,
+      "mean_training_loss": 0.3029011459577651,
+      "holdout_reward_regret": 0.34599509835243225,
+      "holdout_mse": 0.594796359539032
+    },
+    {
+      "epoch": 20,
+      "optimizer_updates": 1260,
+      "mean_training_loss": 0.2982480991927404,
+      "holdout_reward_regret": 0.3291061818599701,
+      "holdout_mse": 0.5893175005912781
+    },
+    {
+      "epoch": 21,
+      "optimizer_updates": 1323,
+      "mean_training_loss": 0.292362851992486,
+      "holdout_reward_regret": 0.33410173654556274,
+      "holdout_mse": 0.6024981141090393
+    },
+    {
+      "epoch": 22,
+      "optimizer_updates": 1386,
+      "mean_training_loss": 0.2865260572187484,
+      "holdout_reward_regret": 0.3587769865989685,
+      "holdout_mse": 0.59910649061203
+    },
+    {
+      "epoch": 23,
+      "optimizer_updates": 1449,
+      "mean_training_loss": 0.28242308871140553,
+      "holdout_reward_regret": 0.34364914894104004,
+      "holdout_mse": 0.5944788455963135
+    },
+    {
+      "epoch": 24,
+      "optimizer_updates": 1512,
+      "mean_training_loss": 0.2769939878157207,
+      "holdout_reward_regret": 0.3658297657966614,
+      "holdout_mse": 0.5965713262557983
+    },
+    {
+      "epoch": 25,
+      "optimizer_updates": 1575,
+      "mean_training_loss": 0.2724281847476959,
+      "holdout_reward_regret": 0.3604077994823456,
+      "holdout_mse": 0.6014533042907715
+    },
+    {
+      "epoch": 26,
+      "optimizer_updates": 1638,
+      "mean_training_loss": 0.26756078548847684,
+      "holdout_reward_regret": 0.3470703959465027,
+      "holdout_mse": 0.588766872882843
+    },
+    {
+      "epoch": 27,
+      "optimizer_updates": 1701,
+      "mean_training_loss": 0.26225784704798744,
+      "holdout_reward_regret": 0.3809361755847931,
+      "holdout_mse": 0.5929062962532043
+    },
+    {
+      "epoch": 28,
+      "optimizer_updates": 1764,
+      "mean_training_loss": 0.2587596341258004,
+      "holdout_reward_regret": 0.3589048981666565,
+      "holdout_mse": 0.5884064435958862
+    },
+    {
+      "epoch": 29,
+      "optimizer_updates": 1827,
+      "mean_training_loss": 0.2537659134656664,
+      "holdout_reward_regret": 0.3771742582321167,
+      "holdout_mse": 0.5885934829711914
+    },
+    {
+      "epoch": 30,
+      "optimizer_updates": 1890,
+      "mean_training_loss": 0.24965987319038027,
+      "holdout_reward_regret": 0.36945268511772156,
+      "holdout_mse": 0.5915084481239319
+    },
+    {
+      "epoch": 31,
+      "optimizer_updates": 1953,
+      "mean_training_loss": 0.24681736978273544,
+      "holdout_reward_regret": 0.36893680691719055,
+      "holdout_mse": 0.5864046812057495
+    },
+    {
+      "epoch": 32,
+      "optimizer_updates": 2016,
+      "mean_training_loss": 0.24300991897545163,
+      "holdout_reward_regret": 0.3834124803543091,
+      "holdout_mse": 0.5878919363021851
+    },
+    {
+      "epoch": 33,
+      "optimizer_updates": 2079,
+      "mean_training_loss": 0.2380901870746461,
+      "holdout_reward_regret": 0.39555028080940247,
+      "holdout_mse": 0.593904435634613
+    },
+    {
+      "epoch": 34,
+      "optimizer_updates": 2142,
+      "mean_training_loss": 0.23397153544993626,
+      "holdout_reward_regret": 0.39117059111595154,
+      "holdout_mse": 0.5848700404167175
+    },
+    {
+      "epoch": 35,
+      "optimizer_updates": 2205,
+      "mean_training_loss": 0.23051062510127113,
+      "holdout_reward_regret": 0.3852446973323822,
+      "holdout_mse": 0.587495744228363
+    },
+    {
+      "epoch": 36,
+      "optimizer_updates": 2268,
+      "mean_training_loss": 0.22789206060152206,
+      "holdout_reward_regret": 0.37594884634017944,
+      "holdout_mse": 0.5819962620735168
+    },
+    {
+      "epoch": 37,
+      "optimizer_updates": 2331,
+      "mean_training_loss": 0.22497020472609808,
+      "holdout_reward_regret": 0.4026092290878296,
+      "holdout_mse": 0.5843569040298462
+    },
+    {
+      "epoch": 38,
+      "optimizer_updates": 2394,
+      "mean_training_loss": 0.22125649641430567,
+      "holdout_reward_regret": 0.3992472290992737,
+      "holdout_mse": 0.5881280303001404
+    },
+    {
+      "epoch": 39,
+      "optimizer_updates": 2457,
+      "mean_training_loss": 0.21914983599904983,
+      "holdout_reward_regret": 0.40042048692703247,
+      "holdout_mse": 0.5813990831375122
+    },
+    {
+      "epoch": 40,
+      "optimizer_updates": 2520,
+      "mean_training_loss": 0.21483979575217715,
+      "holdout_reward_regret": 0.41455909609794617,
+      "holdout_mse": 0.5893712043762207
+    },
+    {
+      "epoch": 41,
+      "optimizer_updates": 2583,
+      "mean_training_loss": 0.21253044572141436,
+      "holdout_reward_regret": 0.38438889384269714,
+      "holdout_mse": 0.5861638188362122
+    },
+    {
+      "epoch": 42,
+      "optimizer_updates": 2646,
+      "mean_training_loss": 0.2098673213095892,
+      "holdout_reward_regret": 0.3889044523239136,
+      "holdout_mse": 0.5865223407745361
+    },
+    {
+      "epoch": 43,
+      "optimizer_updates": 2709,
+      "mean_training_loss": 0.20681047534185742,
+      "holdout_reward_regret": 0.3911864757537842,
+      "holdout_mse": 0.5770659446716309
+    },
+    {
+      "epoch": 44,
+      "optimizer_updates": 2772,
+      "mean_training_loss": 0.20453227252241166,
+      "holdout_reward_regret": 0.394794225692749,
+      "holdout_mse": 0.5841202735900879
+    },
+    {
+      "epoch": 45,
+      "optimizer_updates": 2835,
+      "mean_training_loss": 0.20262568597755734,
+      "holdout_reward_regret": 0.39221781492233276,
+      "holdout_mse": 0.5824442505836487
+    },
+    {
+      "epoch": 46,
+      "optimizer_updates": 2898,
+      "mean_training_loss": 0.20073293220429195,
+      "holdout_reward_regret": 0.40395277738571167,
+      "holdout_mse": 0.5821754932403564
+    },
+    {
+      "epoch": 47,
+      "optimizer_updates": 2961,
+      "mean_training_loss": 0.19740270362013862,
+      "holdout_reward_regret": 0.409145325422287,
+      "holdout_mse": 0.5815467238426208
+    },
+    {
+      "epoch": 48,
+      "optimizer_updates": 3024,
+      "mean_training_loss": 0.19513973499101306,
+      "holdout_reward_regret": 0.4010748863220215,
+      "holdout_mse": 0.5835197567939758
+    },
+    {
+      "epoch": 49,
+      "optimizer_updates": 3087,
+      "mean_training_loss": 0.19295443239666166,
+      "holdout_reward_regret": 0.3813832402229309,
+      "holdout_mse": 0.5825135707855225
+    },
+    {
+      "epoch": 50,
+      "optimizer_updates": 3150,
+      "mean_training_loss": 0.19148851316126567,
+      "holdout_reward_regret": 0.4252150058746338,
+      "holdout_mse": 0.5894187092781067
+    }
+  ],
+  "elapsed_seconds": 59.60899999999674,
+  "selected_epoch": 12,
+  "validation": [
+    {
+      "margin": 0.0,
+      "seed": 18000,
+      "metrics": {
+        "episodes": 20,
+        "mean_episode_reward": 653.66794605136,
+        "success_rate_pct": 53.0688622754491,
+        "admission_efficiency_pct": 91.81955536369523,
+        "pick_rate_pct": 57.79690618762475,
+        "drop_rate_pct": 43.450598802395206,
+        "timeout_rate_pct": 3.4805389221556884,
+        "mean_energy_j_per_step": 768.1587415519975,
+        "mean_episode_steps": 40.0,
+        "crash_episode_rate_pct": 0.0,
+        "minimum_battery_ratio": 0.6978801854403741,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "charged_step_rate_pct": 0.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 1.0,
+        "gpu_vnf_on_gpu_pct": 100.0,
+        "mean_completed_sfc_latency": 2.4594106757970495,
+        "mean_abs_mobility_action": 0.0,
+        "rms_mobility_action": 0.0,
+        "near_zero_mobility_component_pct": 100.0
+      },
+      "elapsed_seconds": 3.7189999999827705
+    },
+    {
+      "margin": 0.05,
+      "seed": 18000,
+      "metrics": {
+        "episodes": 20,
+        "mean_episode_reward": 653.4846699702748,
+        "success_rate_pct": 53.0563872255489,
+        "admission_efficiency_pct": 91.7979710770559,
+        "pick_rate_pct": 57.79690618762475,
+        "drop_rate_pct": 43.450598802395206,
+        "timeout_rate_pct": 3.493013972055888,
+        "mean_energy_j_per_step": 768.1872580363965,
+        "mean_episode_steps": 40.0,
+        "crash_episode_rate_pct": 0.0,
+        "minimum_battery_ratio": 0.6970727223324996,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "charged_step_rate_pct": 0.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 1.0,
+        "gpu_vnf_on_gpu_pct": 100.0,
+        "mean_completed_sfc_latency": 2.4595116963471804,
+        "mean_abs_mobility_action": 0.0,
+        "rms_mobility_action": 0.0,
+        "near_zero_mobility_component_pct": 100.0
+      },
+      "elapsed_seconds": 3.7660000000032596
+    },
+    {
+      "margin": 0.1,
+      "seed": 18000,
+      "metrics": {
+        "episodes": 20,
+        "mean_episode_reward": 653.2451425540455,
+        "success_rate_pct": 53.0439121756487,
+        "admission_efficiency_pct": 91.77638679041658,
+        "pick_rate_pct": 57.79690618762475,
+        "drop_rate_pct": 43.42564870259481,
+        "timeout_rate_pct": 3.5304391217564874,
+        "mean_energy_j_per_step": 768.351115211222,
+        "mean_episode_steps": 40.0,
+        "crash_episode_rate_pct": 0.0,
+        "minimum_battery_ratio": 0.6989094863569195,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "charged_step_rate_pct": 0.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 1.0,
+        "gpu_vnf_on_gpu_pct": 100.0,
+        "mean_completed_sfc_latency": 2.4608803230167804,
+        "mean_abs_mobility_action": 0.0,
+        "rms_mobility_action": 0.0,
+        "near_zero_mobility_component_pct": 100.0
+      },
+      "elapsed_seconds": 3.702999999979511
+    },
+    {
+      "margin": 0.2,
+      "seed": 18000,
+      "metrics": {
+        "episodes": 20,
+        "mean_episode_reward": 652.6235671269903,
+        "success_rate_pct": 53.006487025948104,
+        "admission_efficiency_pct": 91.71163393049859,
+        "pick_rate_pct": 57.79690618762475,
+        "drop_rate_pct": 43.41317365269461,
+        "timeout_rate_pct": 3.5803393213572856,
+        "mean_energy_j_per_step": 768.4234915957744,
+        "mean_episode_steps": 40.0,
+        "crash_episode_rate_pct": 0.0,
+        "minimum_battery_ratio": 0.6985057329928254,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "charged_step_rate_pct": 0.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 1.0,
+        "gpu_vnf_on_gpu_pct": 100.0,
+        "mean_completed_sfc_latency": 2.466748375526206,
+        "mean_abs_mobility_action": 0.0,
+        "rms_mobility_action": 0.0,
+        "near_zero_mobility_component_pct": 100.0
+      },
+      "elapsed_seconds": 3.7339999999967404
+    },
+    {
+      "margin": 0.4,
+      "seed": 18000,
+      "metrics": {
+        "episodes": 20,
+        "mean_episode_reward": 650.4056265878687,
+        "success_rate_pct": 52.8692614770459,
+        "admission_efficiency_pct": 91.47420677746601,
+        "pick_rate_pct": 57.79690618762475,
+        "drop_rate_pct": 43.31337325349301,
+        "timeout_rate_pct": 3.817365269461078,
+        "mean_energy_j_per_step": 768.5805328948192,
+        "mean_episode_steps": 40.0,
+        "crash_episode_rate_pct": 0.0,
+        "minimum_battery_ratio": 0.6997509778771613,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "charged_step_rate_pct": 0.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 1.0,
+        "gpu_vnf_on_gpu_pct": 100.0,
+        "mean_completed_sfc_latency": 2.4703664146385025,
+        "mean_abs_mobility_action": 0.0,
+        "rms_mobility_action": 0.0,
+        "near_zero_mobility_component_pct": 100.0
+      },
+      "elapsed_seconds": 3.797000000020489
+    }
+  ],
+  "selected_margin": 0.0,
+  "model_sha256": "5f84a6996fc4b6a40155d6ca138ae2151969b415ef10bc3b0c796a5477c4feaa",
+  "data_sha256": "1051e1ad35465ccff2703d6a18bf10b7998af3b9a3616c2d363907861de6aea6",
+  "full_optimizer_updates": 3150,
+  "confirmation": {
+    "learned": {
+      "episodes": 50,
+      "mean_episode_reward": 658.0182502830046,
+      "success_rate_pct": 53.53565705128205,
+      "admission_efficiency_pct": 92.61023997227757,
+      "pick_rate_pct": 57.80749198717948,
+      "drop_rate_pct": 43.083934294871796,
+      "timeout_rate_pct": 3.3804086538461537,
+      "mean_energy_j_per_step": 764.4186925202105,
+      "mean_episode_steps": 40.0,
+      "crash_episode_rate_pct": 0.0,
+      "minimum_battery_ratio": 0.6954675458991333,
+      "low_battery_uav_step_rate_pct": 0.0,
+      "charged_step_rate_pct": 0.0,
+      "mean_harvested_j_per_episode": 0.0,
+      "mean_placement_affinity": 1.0,
+      "gpu_vnf_on_gpu_pct": 100.0,
+      "mean_completed_sfc_latency": 2.3967835115682288,
+      "mean_abs_mobility_action": 0.0,
+      "rms_mobility_action": 0.0,
+      "near_zero_mobility_component_pct": 100.0,
+      "seed_start": 19000,
+      "elapsed_seconds": 9.421999999962281
+    },
+    "static_heuristic": {
+      "episodes": 50,
+      "mean_episode_reward": 650.8822849905509,
+      "success_rate_pct": 53.049879807692314,
+      "admission_efficiency_pct": 91.76990383782379,
+      "pick_rate_pct": 57.80749198717948,
+      "drop_rate_pct": 43.108974358974365,
+      "timeout_rate_pct": 3.8411458333333335,
+      "mean_energy_j_per_step": 764.0164208356383,
+      "mean_episode_steps": 40.0,
+      "crash_episode_rate_pct": 0.0,
+      "minimum_battery_ratio": 0.7073139752733076,
+      "low_battery_uav_step_rate_pct": 0.0,
+      "charged_step_rate_pct": 0.0,
+      "mean_harvested_j_per_episode": 0.0,
+      "mean_placement_affinity": 1.0,
+      "gpu_vnf_on_gpu_pct": 100.0,
+      "mean_completed_sfc_latency": 2.4080858596060706,
+      "mean_abs_mobility_action": 0.0,
+      "rms_mobility_action": 0.0,
+      "near_zero_mobility_component_pct": 100.0,
+      "seed_start": 19000,
+      "elapsed_seconds": 3.75
+    },
+    "heuristic": {
+      "episodes": 50,
+      "mean_episode_reward": 591.8656921126968,
+      "success_rate_pct": 49.93903678114204,
+      "admission_efficiency_pct": 86.73784523074208,
+      "pick_rate_pct": 57.57467994310099,
+      "drop_rate_pct": 46.367608209713474,
+      "timeout_rate_pct": 3.332655964234912,
+      "mean_energy_j_per_step": 2467.1227425398474,
+      "mean_episode_steps": 39.4,
+      "crash_episode_rate_pct": 16.0,
+      "minimum_battery_ratio": 0.0,
+      "low_battery_uav_step_rate_pct": 5.228426395939087,
+      "charged_step_rate_pct": 71.57360406091371,
+      "mean_harvested_j_per_episode": 22919.725421673196,
+      "mean_placement_affinity": 1.0,
+      "gpu_vnf_on_gpu_pct": 100.0,
+      "mean_completed_sfc_latency": 2.4694737870071446,
+      "mean_abs_mobility_action": 0.6400272815054415,
+      "rms_mobility_action": 0.7071067812920738,
+      "near_zero_mobility_component_pct": 2.918781725888325,
+      "seed_start": 19000,
+      "elapsed_seconds": 3.702999999979511
+    },
+    "obs_heuristic": {
+      "episodes": 50,
+      "mean_episode_reward": 583.476557409635,
+      "success_rate_pct": 49.20022342964505,
+      "admission_efficiency_pct": 85.29800158464653,
+      "pick_rate_pct": 57.68039404864673,
+      "drop_rate_pct": 45.777687503173716,
+      "timeout_rate_pct": 4.702178439039253,
+      "mean_energy_j_per_step": 2639.604083488793,
+      "mean_episode_steps": 39.46,
+      "crash_episode_rate_pct": 14.000000000000002,
+      "minimum_battery_ratio": 0.0,
+      "low_battery_uav_step_rate_pct": 6.196147997972631,
+      "charged_step_rate_pct": 70.85656360871769,
+      "mean_harvested_j_per_episode": 22753.11301978835,
+      "mean_placement_affinity": 0.9986961057023644,
+      "gpu_vnf_on_gpu_pct": 99.66986530504445,
+      "mean_completed_sfc_latency": 2.42411531083012,
+      "mean_abs_mobility_action": 0.5994256797035511,
+      "rms_mobility_action": 0.6769884600761394,
+      "near_zero_mobility_component_pct": 4.967055245818551,
+      "seed_start": 19000,
+      "elapsed_seconds": 3.594000000040978
+    }
+  },
+  "finished": "2026-10-21T06:52:49.235091+00:00",
+  "comparison": {
+    "comparator": "static_heuristic",
+    "checks": {
+      "confirmation_size": true,
+      "completion_margin": false,
+      "crash_rate": true,
+      "reward": true
+    },
+    "passes_this_cohort": false,
+    "completion_margin_percentage_points": 0.4857772435897374,
+    "reward_margin": 7.135965292453648
+  },
+  "final_fresh_seed_evaluation_and_scratch_replicates_still_required": true
+}
