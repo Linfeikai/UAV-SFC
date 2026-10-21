@@ -1,0 +1,28 @@
+{
+  "status": "complete",
+  "pid": 53908,
+  "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+  "original_reference_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+  "original_environment": true,
+  "episodes": 1000,
+  "seed_start": 650000,
+  "actual_environment_interactions": 40000,
+  "counterfactual_simulator_steps": 320000,
+  "feature_shape": [
+    40000,
+    8,
+    450
+  ],
+  "elapsed_seconds": 741.734999999986,
+  "file_sha256": "86f2ec43a49773ecfe145cc965b079b3991d786f169976a6817b5b165b61f10d",
+  "selected_recipe_counts": [
+    9126,
+    1277,
+    3163,
+    6266,
+    8734,
+    1277,
+    3193,
+    6964
+  ]
+}

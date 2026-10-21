@@ -1,0 +1,184 @@
+{
+  "status": "complete",
+  "started": "2026-10-21T06:59:44.770380+00:00",
+  "pid": 43548,
+  "source_commit": "6abaf00379889d055415af97306c8507b7e7920f",
+  "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+  "arguments": {
+    "config": "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+    "fresh_gate": "D:/UAV-SFC/experiments/server_20261021/scorer_fresh90000_seed42/status.json",
+    "output": "D:/UAV-SFC/experiments/server_20261021/scorer_scale1000_seed42",
+    "device": "cpu",
+    "workers": 4,
+    "seeds": [
+      42
+    ],
+    "data_seed_base": 650000,
+    "data_episodes": 1000,
+    "confirmation_seed": 91000,
+    "fresh_seed": 92000,
+    "gate_model_sha": "a5afe5c2bb2c73d7a626d8df86a6b35666565fd9d140adff7fce47bd7ced6cd8",
+    "gate_seed": 90000
+  },
+  "fresh_gate_sha256": "857ab7659602811037b810135f6e07d46770dae1c7da50aa7334a839f157d9bd",
+  "gate_model_sha256": "a5afe5c2bb2c73d7a626d8df86a6b35666565fd9d140adff7fce47bd7ced6cd8",
+  "frozen_protocol": {
+    "episodes": 1000,
+    "epochs": 50,
+    "loss": "ranking",
+    "validation_seed": 18000,
+    "validation_episodes": 20,
+    "confirmation_seed": 91000,
+    "confirmation_episodes": 50,
+    "fresh_seed": 92000,
+    "fresh_episodes": 100
+  },
+  "runs": {
+    "42": {
+      "run_id": "7c9be187",
+      "training_seed": 42,
+      "data_seed": 650000,
+      "training_from_scratch": true,
+      "data": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\data_seed42.npz",
+      "data_evidence": {
+        "status": "complete",
+        "pid": 53908,
+        "config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+        "original_reference_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+        "original_environment": true,
+        "episodes": 1000,
+        "seed_start": 650000,
+        "actual_environment_interactions": 40000,
+        "counterfactual_simulator_steps": 320000,
+        "feature_shape": [
+          40000,
+          8,
+          450
+        ],
+        "elapsed_seconds": 741.734999999986,
+        "file_sha256": "86f2ec43a49773ecfe145cc965b079b3991d786f169976a6817b5b165b61f10d",
+        "selected_recipe_counts": [
+          9126,
+          1277,
+          3163,
+          6266,
+          8734,
+          1277,
+          3193,
+          6964
+        ]
+      },
+      "directory": "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\ranking_seed42",
+      "confirmation": {
+        "comparator": "static_heuristic",
+        "checks": {
+          "confirmation_size": true,
+          "completion_margin": true,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": true,
+        "completion_margin_percentage_points": 0.6384676775738285,
+        "reward_margin": 9.31393534660333
+      },
+      "model_sha256": "1b26b5f4d658bfc30d148fb159f3aec70dcf6c5e2170c05ee816e5c60bc3ad0e",
+      "fresh": {
+        "comparator": "static_heuristic",
+        "checks": {
+          "confirmation_size": true,
+          "completion_margin": true,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": true,
+        "completion_margin_percentage_points": 0.7536622495071299,
+        "reward_margin": 10.819535607100079
+      }
+    }
+  },
+  "elapsed_seconds": 911.5,
+  "commands": [
+    {
+      "label": "data42",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_local_6abaf00\\scripts\\collect_scorer_data.py",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\data_seed42.npz",
+        "--episodes",
+        "1000",
+        "--seed",
+        "650000",
+        "--workers",
+        "4"
+      ],
+      "pid": 53908,
+      "started": "2026-10-21T06:59:44.784484+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "train42",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_local_6abaf00\\scripts\\train_placement_scorer.py",
+        "--data",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\data_seed42.npz",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\ranking_seed42",
+        "--run-id",
+        "7c9be187",
+        "--loss",
+        "ranking",
+        "--seed",
+        "42",
+        "--epochs",
+        "50",
+        "--device",
+        "cpu",
+        "--validation-seed",
+        "18000",
+        "--validation-episodes",
+        "20",
+        "--confirmation-seed",
+        "91000",
+        "--confirmation-episodes",
+        "50"
+      ],
+      "pid": 16008,
+      "started": "2026-10-21T07:12:10.536311+00:00",
+      "exit_code": 0
+    },
+    {
+      "label": "fresh42",
+      "argv": [
+        "C:\\Users\\30395\\.conda\\envs\\sfc_env\\python.exe",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_local_6abaf00\\scripts\\evaluate_scorer_cohort.py",
+        "--root",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale_local_6abaf00",
+        "--config",
+        "D:/UAV-SFC/experiments/server_20261021/teacher_evidence_af7549f/training_evidence/fixed_smart_teacher/.hydra/config.yaml",
+        "--model",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\ranking_seed42\\selected_model.pt",
+        "--expected-sha256",
+        "1b26b5f4d658bfc30d148fb159f3aec70dcf6c5e2170c05ee816e5c60bc3ad0e",
+        "--run-id",
+        "7c9be187_fresh",
+        "--seed",
+        "92000",
+        "--episodes",
+        "100",
+        "--output",
+        "D:\\UAV-SFC\\experiments\\server_20261021\\scorer_scale1000_seed42\\fresh92000_seed42"
+      ],
+      "pid": 42404,
+      "started": "2026-10-21T07:14:11.018535+00:00",
+      "exit_code": 0
+    }
+  ],
+  "finished": "2026-10-21T07:14:56.271070+00:00",
+  "all_replicates_pass": true
+}
