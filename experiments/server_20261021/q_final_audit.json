@@ -1,0 +1,52 @@
+{
+  "status": "complete",
+  "finished": "2026-10-21T04:14:16.416326+00:00",
+  "elapsed_seconds": 1379.9582931809127,
+  "source_commit": "8981a9b",
+  "runs": [
+    {
+      "algorithm": "STATIONARY_Q001",
+      "run_id": "0c97d31d",
+      "model_sha256": "305a91138c1afa83c330840c68e5e61720d0dc4df25ed56be3d3ab4a16ab2d91",
+      "selected_new_timesteps": 10000,
+      "source_timesteps": 20000,
+      "selected_total_training_steps": 30000,
+      "training_new_budget": 30000,
+      "training_directory": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q001_50k_seed42",
+      "comparison": {
+        "comparator": "static_heuristic",
+        "completion_margin_percentage_points": -0.2010454362686005,
+        "reward_margin": -2.584200611114511,
+        "checks": {
+          "completion_margin": false,
+          "crash_rate": true,
+          "reward": false
+        },
+        "passes_this_cohort": false
+      },
+      "wandb_summary_updated": true
+    },
+    {
+      "algorithm": "STATIONARY_Q005",
+      "run_id": "b184517f",
+      "model_sha256": "bfaf700c36af29aa4a798a0bfd520deba79c8ab4747c7fbfd19183dd548d645e",
+      "selected_new_timesteps": 30000,
+      "source_timesteps": 20000,
+      "selected_total_training_steps": 50000,
+      "training_new_budget": 30000,
+      "training_directory": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q005_50k_seed42",
+      "comparison": {
+        "comparator": "static_heuristic",
+        "completion_margin_percentage_points": -0.6031363088057873,
+        "reward_margin": -7.835572261810398,
+        "checks": {
+          "completion_margin": false,
+          "crash_rate": true,
+          "reward": false
+        },
+        "passes_this_cohort": false
+      },
+      "wandb_summary_updated": true
+    }
+  ]
+}

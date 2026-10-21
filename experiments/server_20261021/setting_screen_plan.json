@@ -1,0 +1,46 @@
+{
+  "status": "prepared",
+  "root": "/root/autodl-tmp/UAV-SFC-setting-5f79639",
+  "source_commit": "5f79639",
+  "output": "/root/autodl-tmp/UAV-SFC-setting-5f79639/server_runs/setting_sensitivity_20261021",
+  "parent_status": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_control_20261021/status.json",
+  "base_config": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q001_50k_seed42/.hydra/config.yaml",
+  "episodes": 10,
+  "seed": 9000,
+  "settings": [
+    {
+      "name": "arrival050_cpu500",
+      "arrival_probability": 0.5,
+      "cpu_frequency_hz": 500000000.0
+    },
+    {
+      "name": "arrival030_cpu500",
+      "arrival_probability": 0.3,
+      "cpu_frequency_hz": 500000000.0
+    },
+    {
+      "name": "arrival050_cpu300",
+      "arrival_probability": 0.5,
+      "cpu_frequency_hz": 300000000.0
+    },
+    {
+      "name": "arrival030_cpu300",
+      "arrival_probability": 0.3,
+      "cpu_frequency_hz": 300000000.0
+    }
+  ],
+  "models": [
+    {
+      "label": "original20k_transfer",
+      "path": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+      "sha256": "2106f25d3f9b2cfcbdb775d2549fb3322aae72ea45ed322adb0053c083720fa2"
+    },
+    {
+      "label": "q001_transfer",
+      "path": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_search_20261021/stationary_q001/STATIONARY_Q001_final_model.zip",
+      "sha256": "305a91138c1afa83c330840c68e5e61720d0dc4df25ed56be3d3ab4a16ab2d91"
+    }
+  ],
+  "scope_authorization": "User allowed modifying environment and algorithm on 2026-10-21; same-setting comparators required.",
+  "archive_sha256": "ef5cdf3c36f82e596b871d12300d6d7f1a2eb812478cdd2a653e7e648b02836f"
+}

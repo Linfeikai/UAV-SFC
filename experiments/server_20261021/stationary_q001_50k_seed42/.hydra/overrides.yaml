@@ -1,0 +1,16 @@
+- hybrid=relational_stationary
+- env=heterogeneous_hybrid
+- seed=42
+- n_envs=8
+- total_timesteps=30000
+- warmup_steps=5000
+- bc_pretrain_steps=0
+- checkpoint_freq=5000
+- validation_freq=5000
+- validation_episodes=5
+- resume_model=/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip
+- use_wandb=true
+- run_heuristic_baseline=false
+- validation_seed=7000
+- diffusion.categorical_q_coef=0.01
+- exp_name=stationary_q001_50k_seed42

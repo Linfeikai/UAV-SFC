@@ -1,0 +1,43 @@
+{
+  "elapsed_seconds": 179.39011534675956,
+  "episodes": 10,
+  "seed_start": 9000,
+  "rows": [
+    {
+      "setting": "arrival050_cpu500",
+      "q001_completion": 52.52173913043479,
+      "static_completion": 52.57142857142857,
+      "completion_margin": -0.04968944099378092,
+      "pick_rate": 57.93788819875776,
+      "admitted_completion": 90.65180102915951,
+      "screening_only": true
+    },
+    {
+      "setting": "arrival030_cpu500",
+      "q001_completion": 71.61770790235829,
+      "static_completion": 71.61770790235829,
+      "completion_margin": 0.0,
+      "pick_rate": 78.44435250310302,
+      "admitted_completion": 91.29746835443038,
+      "screening_only": true
+    },
+    {
+      "setting": "arrival050_cpu300",
+      "q001_completion": 45.16770186335404,
+      "static_completion": 45.44099378881988,
+      "completion_margin": -0.27329192546584125,
+      "pick_rate": 57.93788819875776,
+      "admitted_completion": 77.95883361921098,
+      "screening_only": true
+    },
+    {
+      "setting": "arrival030_cpu300",
+      "q001_completion": 61.89491104675218,
+      "static_completion": 62.39139429044269,
+      "completion_margin": -0.49648324369051267,
+      "pick_rate": 78.44435250310302,
+      "admitted_completion": 78.90295358649789,
+      "screening_only": true
+    }
+  ]
+}

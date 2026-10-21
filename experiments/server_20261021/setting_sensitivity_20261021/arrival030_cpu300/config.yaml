@@ -1,0 +1,97 @@
+env:
+  UAV_TYPES:
+  - gpu
+  - general
+  - gpu
+  - general
+  NON_GPU_SLOWDOWN: 4.0
+  USE_HARD_CAP: false
+  APPLY_MOBILITY_MASK_IN_ENV: false
+  EXPOSE_PLACEMENT_CONTEXT: true
+  PLACEMENT_AFFINITY_BIAS: 0.0
+  PLACEMENT_LOAD_BIAS: 0.0
+  PLACEMENT_DISTANCE_BIAS: 0.0
+  ARRIVAL_PROB: 0.3
+uav:
+  CPU_FREQ: 300000000.0
+  MAX_SPEED: 20.0
+  HEIGHT: 100.0
+  MIN_SAFE_DISTANCE: 10.0
+  CHARGING_POWER: 1000.0
+  P_TX_CROSS: 0.5
+  FULL_LOAD_POWER: 20.0
+reward:
+  SUCCESS: 3.0
+  TIMEOUT: -0.5
+  DROP: -0.05
+  CRASH: -50.0
+  W_ENERGY: 0.5
+  W_CHARGE: 0.1
+algo_name: DIFFUSION
+total_timesteps: 30000
+checkpoint_freq: 5000
+seed: 42
+exp_name: stationary_q001_50k_seed42
+run_heuristic_baseline: false
+heuristic_timesteps: 20000
+run_heuristic_reuse: false
+heuristic_reuse_input: DIFFUSION
+warmup_steps: 5000
+warmup_random_fraction: 0.2
+warmup_mobility_source: brake
+bc_pretrain_steps: 0
+bc_batch_size: 256
+bc_learning_rate: 0.0001
+bc_mobility_weight: 1.0
+validation_freq: 5000
+validation_episodes: 5
+validation_seed: 7000
+resume_model: /root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip
+diffusion_beta_schedule: cosine
+diffusion_clip_denoised: 2.5
+diffusion_prediction_type: sample
+share_features_extractor: false
+canonical_categorical_critic: true
+hybrid_categorical_placement: true
+categorical_temperature: 0.7
+placement_prior_scale: 0.0
+relational_placement: true
+placement_use_post_mobility_geometry: true
+use_wandb: true
+n_envs: 8
+ppo:
+  learning_rate: 0.0003
+  n_steps: 2048
+  batch_size: 64
+  gamma: 0.99
+sac:
+  learning_rate: 0.0003
+  buffer_size: 100000
+  tau: 0.005
+diffusion:
+  learning_rate: 0.0001
+  buffer_size: 200000
+  batch_size: 256
+  tau: 0.005
+  qne_temperature: 0.5
+  categorical_q_coef: 0.01
+  categorical_entropy_coef: 0.001
+  categorical_bc_coef: 1.0
+  categorical_bc_batch_size: 128
+  categorical_bc_policy_mobility: false
+  categorical_bc_policy_mobility_prob: 0.0
+  mobility_bc_coef: 4.0
+  gradient_steps: 1
+  qne_k_samples: 8
+gaussian:
+  mobility_bc_coef: 0.0
+  learning_rate: 0.0001
+  buffer_size: 200000
+  batch_size: 512
+  tau: 0.005
+  gamma: 0.99
+  learning_starts: 0
+  gradient_steps: 1
+  ent_coef: 0.0
+  categorical_bc_coef: 1.0
+  categorical_bc_batch_size: 128
