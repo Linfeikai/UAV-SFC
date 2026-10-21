@@ -72,6 +72,8 @@ def digest(path):
 def validate_run(run, state, pipeline):
     if run.get('status') != 'complete':
         raise ValueError('Run is not marked complete')
+    if run.get('model_format') == 'deployment_scorer':
+        return validate_scorer_run(run, state, pipeline)
     args = state['arguments']
     for key, minimum in [('timesteps', int(args['steps'])), ('updates', 1), ('finite_scalar_count', 1)]:
         if int(run.get(key, 0)) < minimum:
@@ -97,6 +99,44 @@ def validate_run(run, state, pipeline):
             if not 0 <= result.get(metric, -1) <= 100:
                 raise ValueError('Invalid evaluation rate: ' + metric)
         evidence['evaluations'][policy] = digest(path)
+    return evidence
+
+
+
+def validate_scorer_run(run, state, pipeline):
+    """Validate the native scorer artifact without pretending it is an SB3 ZIP."""
+    import torch
+    folder = inside(run['directory'], pipeline)
+    worker = load_json(folder / 'status.json')
+    if worker.get('status') != 'complete' or not worker.get('training_from_scratch'):
+        raise ValueError('Scorer training did not complete from scratch')
+    if len(worker['history']) != int(state['arguments']['epochs']):
+        raise ValueError('Incomplete scorer epoch budget')
+    if int(worker.get('full_optimizer_updates', 0)) < 1:
+        raise ValueError('Scorer has no optimizer updates')
+    model = inside(folder / 'selected_model.pt', pipeline)
+    model_digest = digest(model)
+    if model_digest['sha256'] != worker['model_sha256'] or model_digest['sha256'] != run['model_sha256']:
+        raise ValueError('Scorer model hash mismatch')
+    saved = torch.load(model, map_location='cpu', weights_only=True)
+    if not all(torch.isfinite(value).all() for value in saved['state_dict'].values()):
+        raise ValueError('Non-finite scorer weights')
+    evidence = dict(model=model_digest, evaluations={})
+    for label in ('learned', 'static_heuristic', 'heuristic', 'obs_heuristic'):
+        path = inside(folder / (label + '.json'), pipeline)
+        result = load_json(path)
+        key = run['algorithm'].lower() if label == 'learned' else label
+        if result != run['evaluations'][key] or result != worker['confirmation'][label]:
+            raise ValueError('Scorer evaluation mismatch: ' + label)
+        if result.get('episodes', 0) < int(state['arguments']['eval_episodes']):
+            raise ValueError('Insufficient scorer confirmation episodes')
+        for value in result.values():
+            if isinstance(value, (float, int)) and not math.isfinite(value):
+                raise ValueError('Non-finite scorer metric')
+        if any(not 0 <= result.get(metric, -1) <= 100
+               for metric in ('success_rate_pct', 'crash_episode_rate_pct')):
+            raise ValueError('Invalid scorer rate')
+        evidence['evaluations'][key] = digest(path)
     return evidence
 
 
@@ -188,7 +228,17 @@ def snapshot(config):
     runs = []
     for run in state.get('runs', []):
         item = {k: run[k] for k in ('algorithm', 'run_id', 'status', 'url', 'timesteps',
-                                   'updates', 'evaluations', 'finished') if k in run}
+                                   'updates', 'evaluations', 'finished', 'model_format', 'training_epochs',
+                                   'selected_epoch', 'selected_margin', 'comparison') if k in run}
+        if run.get('model_format') == 'deployment_scorer':
+            worker_path = inside(run['directory'], config['pipeline']) / 'status.json'
+            if worker_path.exists():
+                item['worker_process'] = process_identity(run['identity']['pid']) if run.get('identity') else None
+                progress = load_json(worker_path)
+                item.update(worker_phase=progress.get('status'),
+                            training_epochs_finished=len(progress.get('history', [])),
+                            validation_margins_evaluated=len(progress.get('validation', [])),
+                            confirmation_policies_completed=len(progress.get('confirmation', {})))
         log = Path(config['pipeline']) / (run['algorithm'].lower() + '.log')
         if log.exists():
             import re

@@ -1,0 +1,182 @@
+{
+  "screening_only": true,
+  "training_performed": false,
+  "seed_start": 17000,
+  "episodes": 10,
+  "config_sha256": "767fbce53936c014b2d957ee058305406b8a4ad11d49dc3e97aef419e1e52e54",
+  "policies": {
+    "0": {
+      "success_rate_pct": 53.74937091092099,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 656.2239745950696,
+      "mean_energy_j_per_step": 769.5107357614946,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.416041926462651,
+      "selected_recipe_counts": [
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_seconds": 1.7511631562374532
+    },
+    "1": {
+      "success_rate_pct": 28.007045797684953,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 327.9154122231901,
+      "mean_energy_j_per_step": 710.325746651782,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.812118872153578,
+      "selected_recipe_counts": [
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_seconds": 1.6326793292537332
+    },
+    "2": {
+      "success_rate_pct": 48.691494715651736,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 592.2252092218395,
+      "mean_energy_j_per_step": 757.5903818702864,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.4953210190652095,
+      "selected_recipe_counts": [
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_seconds": 1.692511832807213
+    },
+    "3": {
+      "success_rate_pct": 52.69250125817816,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 643.7163373088835,
+      "mean_energy_j_per_step": 764.9319583867144,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.459160612150921,
+      "selected_recipe_counts": [
+        0,
+        0,
+        0,
+        400,
+        0,
+        0,
+        0,
+        0
+      ],
+      "elapsed_seconds": 1.6933296183124185
+    },
+    "4": {
+      "success_rate_pct": 53.59838953195773,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 654.1580272769926,
+      "mean_energy_j_per_step": 768.4406382970749,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.4173410288360833,
+      "selected_recipe_counts": [
+        0,
+        0,
+        0,
+        0,
+        400,
+        0,
+        0,
+        0
+      ],
+      "elapsed_seconds": 1.6757054692134261
+    },
+    "5": {
+      "success_rate_pct": 28.661298439859085,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 336.85092277958995,
+      "mean_energy_j_per_step": 711.3931214196331,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.7298709245438397,
+      "selected_recipe_counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        400,
+        0,
+        0
+      ],
+      "elapsed_seconds": 1.57744543813169
+    },
+    "6": {
+      "success_rate_pct": 51.3839959738299,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 626.9674983239171,
+      "mean_energy_j_per_step": 762.9726808606168,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.4734973788581094,
+      "selected_recipe_counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        400,
+        0
+      ],
+      "elapsed_seconds": 1.6465844442136586
+    },
+    "7": {
+      "success_rate_pct": 52.415702063412176,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 636.3447821533678,
+      "mean_energy_j_per_step": 767.4694851317718,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.3795265607650564,
+      "selected_recipe_counts": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        400
+      ],
+      "elapsed_seconds": 1.647558820899576
+    },
+    "simulator_oracle": {
+      "success_rate_pct": 55.20885757423251,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 678.6439859485625,
+      "mean_energy_j_per_step": 767.5292754252503,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.4216692958788637,
+      "selected_recipe_counts": [
+        90,
+        3,
+        33,
+        75,
+        95,
+        6,
+        30,
+        68
+      ],
+      "elapsed_seconds": 12.632796434219927
+    }
+  },
+  "observation_parity_states": 400,
+  "observation_parity_mismatches": 0
+}

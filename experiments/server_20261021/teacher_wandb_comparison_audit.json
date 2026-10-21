@@ -1,0 +1,12 @@
+[
+  {
+    "run_id": "c6ae7a2b",
+    "service_reported_state": "finished",
+    "comparison_updated": true
+  },
+  {
+    "run_id": "c3e31218",
+    "service_reported_state": "crashed",
+    "comparison_updated": true
+  }
+]

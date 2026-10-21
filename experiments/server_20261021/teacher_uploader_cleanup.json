@@ -1,0 +1,57 @@
+{
+  "reason": "final model and validation budget complete; main waiting in do_wait on shutdown with live wandb backend",
+  "observed_at": "2026-10-21T05:39:12.575183+00:00",
+  "main": {
+    "pid": 7555,
+    "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+    "start_ticks": 283923853,
+    "state": "S",
+    "command": [
+      "/root/autodl-tmp/uav-sfc-venv/bin/python",
+      "main.py",
+      "hybrid=relational_stationary",
+      "env=heterogeneous_hybrid",
+      "seed=42",
+      "n_envs=8",
+      "total_timesteps=20000",
+      "warmup_steps=5000",
+      "bc_pretrain_steps=1000",
+      "checkpoint_freq=5000",
+      "validation_freq=5000",
+      "validation_episodes=10",
+      "validation_seed=14000",
+      "resume_model=/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_search_20261021/stationary_q001/STATIONARY_Q001_final_model.zip",
+      "use_wandb=true",
+      "run_heuristic_baseline=false",
+      "diffusion.categorical_q_coef=0.01",
+      "diffusion.categorical_bc_coef=1.0",
+      "warmup_expert_policy=lookahead",
+      "warmup_teacher_candidates=8",
+      "exp_name=teacher_lookahead_adapt20k_seed42",
+      "hydra.run.dir=/root/autodl-tmp/UAV-SFC-teacher-af7549f/server_runs/teacher_lookahead_adapt20k_seed42"
+    ],
+    "alive": true
+  },
+  "backend": {
+    "pid": 7660,
+    "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+    "start_ticks": 283924640,
+    "state": "S",
+    "alive": true
+  },
+  "model_sha256": "8a45ef8ceb2f746f1ae8c4a717691b2ea2b940a338816d497d51ca40dea334da",
+  "actual_final_new_timesteps": 20000,
+  "action": "SIGTERM only verified wandb-core child; retain scientific checkpoints and logs; no retraining",
+  "main_after_cleanup": {
+    "pid": 7555,
+    "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+    "start_ticks": 283923853,
+    "state": "Z",
+    "command": [],
+    "alive": false
+  },
+  "backend_after_cleanup": {
+    "pid": 7660,
+    "alive": false
+  }
+}
