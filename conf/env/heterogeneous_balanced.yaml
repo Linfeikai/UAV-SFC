@@ -1,0 +1,30 @@
+# Heterogeneous environment for learned categorical VNF placement.
+UAV_TYPES:
+  - gpu
+  - general
+  - gpu
+  - general
+NON_GPU_SLOWDOWN: 4.0
+USE_HARD_CAP: false
+APPLY_MOBILITY_MASK_IN_ENV: false
+
+# Per-VNF, per-UAV effective demand enables hard categorical masks.
+EXPOSE_PLACEMENT_CONTEXT: true
+
+# Do not overwrite learned choices with the old structured decoder.
+PLACEMENT_AFFINITY_BIAS: 0.0
+PLACEMENT_LOAD_BIAS: 0.0
+PLACEMENT_DISTANCE_BIAS: 0.0
+
+# Balanced-arrival scenario: ARRIVAL_PROB is a Poisson mean per UE/slot.
+# Training plans pair this with uav.CPU_FREQ=300000000 (300MHz).
+ARRIVAL_PROB: 0.3
+NUM_UES: 20
+M: 12
+K: 6
+MAX_STEPS: 40
+TIME_SLOT_DURATION: 8.0
+DT_FLY: 1.0
+DEADLINE_FACTOR: 1.2
+BATTERY_CAPACITY: 30000.0
+BANDWIDTH_HZ: 2000000.0
