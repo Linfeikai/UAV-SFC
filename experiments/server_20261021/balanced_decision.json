@@ -1,0 +1,13 @@
+{
+  "status": "train_balanced_scenario_for_20000_steps",
+  "remote_evidence": "/root/autodl-tmp/UAV-SFC-setting-5f79639/server_runs/setting_sensitivity_20261021/status.json",
+  "evidence_sha256": "b7edafb53b00a92bc61f5d8e1c76b1d6c7ce877cdb7730f7fd2c4ce00cc48cf4",
+  "setting": "arrival030_cpu300",
+  "rationale": "User allows environment and algorithm changes. Screening shows lower arrival alone raises all absolute scores without algorithm advantage. Lambda0.3/CPU300MHz reduces admission saturation and retains about21% admitted-task failure, giving a meaningful placement optimization problem. Freeze scenario and compare two same-budget algorithm recipes on fresh seeds.",
+  "screening_episodes": 10,
+  "final_generalization_required": true,
+  "training_seeds_to_replicate_from_scratch": [
+    43,
+    44
+  ]
+}

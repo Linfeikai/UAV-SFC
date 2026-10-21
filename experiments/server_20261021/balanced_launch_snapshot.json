@@ -1,0 +1,22 @@
+{
+  "status": "training",
+  "started": "2026-10-21T04:30:17.421688+00:00",
+  "pid": 5313,
+  "source_commit": "82bf265",
+  "source_model_sha256": "305a91138c1afa83c330840c68e5e61720d0dc4df25ed56be3d3ab4a16ab2d91",
+  "decision_sha256": "eb746614b0e2c19e2cf159f3b82b0d51ece2f1807f334f36a954213c8fbc0fb2",
+  "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+  "start_ticks": "283656372",
+  "pipeline": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_search_20261021",
+  "active_process": {
+    "pid": 5317,
+    "label": "motion_search",
+    "command": [
+      "/root/autodl-tmp/uav-sfc-venv/bin/python",
+      "scripts/motion_search.py",
+      "--plan",
+      "/root/autodl-tmp/UAV-SFC-balanced-82bf265/balanced_plan.json"
+    ]
+  },
+  "elapsed_seconds": 0.0008284719660878181
+}

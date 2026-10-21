@@ -1,0 +1,32 @@
+{
+  "observed_at": "2026-10-21T04:32:43.865879+00:00",
+  "source_commit": "82bf265",
+  "outer_started": "2026-10-21T04:30:17.421688+00:00",
+  "status": "training",
+  "source_model_sha256": "305a91138c1afa83c330840c68e5e61720d0dc4df25ed56be3d3ab4a16ab2d91",
+  "full_flat_environment_equals_screen": true,
+  "runs": [
+    {
+      "variant": "BALANCED_Q001_BC1",
+      "run_id": "aac61fb0",
+      "training_directory": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_q001_bc1_adapt20k_seed42",
+      "config_sha256": "364a289d82b867f0c86c9b12f69b0b2361b1e325f7c0c0376f8f3aad0016c524",
+      "arrival_poisson_lambda": 0.3,
+      "cpu_frequency_hz": 300000000,
+      "categorical_q_coef": 0.01,
+      "categorical_bc_coef": 1.0,
+      "mobility_bc_coef": 4.0
+    },
+    {
+      "variant": "BALANCED_Q005_BC03",
+      "run_id": "c768bbc8",
+      "training_directory": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_q005_bc03_adapt20k_seed42",
+      "config_sha256": "33b83c1965ece0f6e391c4c4ad6f3e16388e02d7b0f0b8c9096607782e8a0d43",
+      "arrival_poisson_lambda": 0.3,
+      "cpu_frequency_hz": 300000000,
+      "categorical_q_coef": 0.05,
+      "categorical_bc_coef": 0.3,
+      "mobility_bc_coef": 4.0
+    }
+  ]
+}

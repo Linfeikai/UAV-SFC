@@ -1,0 +1,7 @@
+{
+  "source_commit": "82bf265",
+  "root": "/root/autodl-tmp/UAV-SFC-balanced-82bf265",
+  "archive_sha256": "c88bb3008fb05b84c47c6cc6b27ab6ca2e422d8905e97191b502176f0b07f9f6",
+  "previous_preflight_root": "/root/autodl-tmp/UAV-SFC-balanced-33b5df8",
+  "previous_failure": "ModuleNotFoundError: main before training; no pipeline/children launched"
+}

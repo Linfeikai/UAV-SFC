@@ -91,3 +91,11 @@ ARRIVAL_PROB在实际生成器中是每UE每slot的泊松均值λ（代码名保
 降低到达强度提高了所有策略的绝对完成率。λ0.3/500MHz下Q001与静态完成率相同，不能算算法提升。选择λ0.3/300MHz作为下一训练场景：接取率约78.44%，仍保留约21%的已接取任务处理失败，能检验部署优化；不是按旧模型超越基线来选，因为四组迁移诊断均未超越静态。
 
 冻结环境名 `heterogeneous_balanced`，配合 `uav.CPU_FREQ=300000000`；仍为4UAV/20UE/M12/K6/40步、原奖励、电池/碰撞规则与带宽。两组从Q001所选累计30k模型开始适配，各20k新训练、freshwarmup5000、BC预训练0。对照使用Q系数0.01/BC系数1.0，候选使用Q系数0.05/BC系数0.3；运动BC=4均保留，候选有意减弱教师模仿约束、加强critic驱动优化，属于联合算法配方对照。它们是迁移适配，不是独立从头复现。
+
+### 新场景两组训练已启动
+
+实际于2026-10-21 12:30:17（中国时间）启动，科学版本 `82bf265`，独立根 `/root/autodl-tmp/UAV-SFC-balanced-82bf265`。两组实际run：`aac61fb0`（BALANCED_Q001_BC1），`c768bbc8`（BALANCED_Q005_BC03）。训练预算各20k新步，验证10000–10009，确认11000–11049各50集，外层自动运行同种子静态零移动启发式。
+
+新 `setting_training.py` 在launch前强制检查：200集筛查完成、历史Q两组50集及静态流程complete、源模型hash正确、每组Hydra合成后的完整扁平环境等于所选筛查配置、输出目录不存在、最多两组训练。CUDA构造器检查确认Q/BC系数生效、运动BC=4、104维动作可执行。实际训练保存的Hydra配置再次全量核对通过（见 `balanced_launch_audit.json`）。原 `33b5df8` 控制器因直接调用时项目import路径缺失，在创建训练管线前停止；失败记录保留为 `balanced_preflight_failed.json`，已在独立82bf265目录修正。
+
+只读监控与inotify watcher已切换至 `balanced_search_20261021`；外层为 `balanced_control_20261021/status.json`。本地入口 `experiments/server_20261021/balanced_monitor_config.json`。旧Q三条事件在模型hash/zip完整性及全部评估JSON核验后ACK。自动化已更新为新场景和实际run，继续执行同设置联合目标，5集训练验证仅筛查。

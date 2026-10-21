@@ -1,0 +1,11 @@
+{
+  "source_commit": "33b5df8",
+  "root": "/root/autodl-tmp/UAV-SFC-balanced-33b5df8",
+  "stage": "controller_preflight",
+  "error": "ModuleNotFoundError: main",
+  "training_started": false,
+  "pipeline_created": false,
+  "resolution_commit": "82bf265",
+  "resolution": "Add project root to sys.path for direct script invocation; launch in a separate source root.",
+  "gpu_constructor_preflight_passed_before_controller": true
+}

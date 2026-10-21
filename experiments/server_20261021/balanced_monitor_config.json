@@ -1,0 +1,8 @@
+{
+  "host": "connect.westb.seetacloud.com",
+  "port": 14379,
+  "user": "root",
+  "identity_file": "C:/Users/30395/.ssh/uav_sfc_monitor_20261021",
+  "pipeline": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_search_20261021",
+  "cache_dir": "D:/UAV-SFC/experiments/server_20261021/balanced_monitor_cache"
+}
