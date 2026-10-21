@@ -1,0 +1,21 @@
+{
+  "status": "train_fixed_teacher_controlled_pair",
+  "remote_evidence": "/root/autodl-tmp/lookahead_teacher_screen50_20261021.json",
+  "evidence_sha256": "fdea9152288a7a092a5200b324632a59fe25cc7e585a44f0b4851ce6c1dbfdfd",
+  "fixed_env": "heterogeneous_hybrid",
+  "source_cumulative_timesteps": 30000,
+  "new_steps_each": 20000,
+  "fresh_warmup_each": 5000,
+  "bc_pretrain_steps_each": 1000,
+  "teacher_only_variable": [
+    "smart",
+    "lookahead"
+  ],
+  "rationale": "50 fresh teacher screening episodes improved completion by 1.3507pp and reward by 20.9314 with zero crashes; verify learned actor can absorb improvement. Both arms receive equal additional BC pretraining.",
+  "teacher_is_not_learned_result": true,
+  "rejected_hypothesis": "No capacity-decoder label changes observed in either fixed-environment expert audit.",
+  "validation_seed": 14000,
+  "confirmation_seed": 15000,
+  "confirmation_episodes": 50,
+  "final_fresh_seed_evaluation_and_scratch_seeds43_44_still_required": true
+}

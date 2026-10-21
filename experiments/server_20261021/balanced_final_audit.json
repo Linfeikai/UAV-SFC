@@ -1,0 +1,109 @@
+{
+  "status": "complete",
+  "finished": "2026-10-21T04:53:05.827611+00:00",
+  "elapsed_seconds": 1368.4057832090184,
+  "runs": [
+    {
+      "algorithm": "BALANCED_Q001_BC1",
+      "run_id": "aac61fb0",
+      "model_sha256": "63eb7561ac4e793d12b546c614b698f08eb200dc8a6b4e243777f05bcd6f233b",
+      "selected_checkpoint_new_timesteps": 20000,
+      "source_cumulative_timesteps": 30000,
+      "selected_cumulative_timesteps": 50000,
+      "comparison": {
+        "comparator": "static_heuristic",
+        "completion_margin_percentage_points": -0.024945950440709908,
+        "reward_margin": -0.18786783821423114,
+        "checks": {
+          "completion_margin": false,
+          "crash_rate": true,
+          "reward": false
+        },
+        "passes_this_cohort": false
+      },
+      "metrics": {
+        "admission_efficiency_pct": 79.24149587999155,
+        "algorithm": "diffusion",
+        "charged_step_rate_pct": 0.0,
+        "config": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_q001_bc1_adapt20k_seed42/.hydra/config.yaml",
+        "crash_episode_rate_pct": 0.0,
+        "drop_rate_pct": 24.970896391152504,
+        "episodes": 50,
+        "gpu_vnf_on_gpu_pct": 99.83097401225439,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "mean_abs_mobility_action": 0.1889060925208032,
+        "mean_completed_sfc_latency": 2.485869316163383,
+        "mean_energy_j_per_step": 772.2608193168413,
+        "mean_episode_reward": 453.6745347483547,
+        "mean_episode_steps": 40.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 0.9993337589873137,
+        "minimum_battery_ratio": 0.6962689125058875,
+        "mobility_source": "default",
+        "model": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_search_20261021/balanced_q001_bc1/BALANCED_Q001_BC1_final_model.zip",
+        "near_zero_mobility_component_pct": 16.40625,
+        "pick_rate_pct": 78.71278895725928,
+        "placement_affinity_bias": 0.0,
+        "placement_distance_bias": 0.0,
+        "placement_load_bias": 0.0,
+        "placement_source": "default",
+        "reward_drop": -0.05,
+        "reward_success": 3.0,
+        "rms_mobility_action": 0.23599145395345597,
+        "success_rate_pct": 62.373191418593045,
+        "timeout_rate_pct": 12.655912190254448
+      }
+    },
+    {
+      "algorithm": "BALANCED_Q005_BC03",
+      "run_id": "c768bbc8",
+      "model_sha256": "418114c524fb0606f2cd178aaa8aedf77eeb7bc14ab680bfbe345605cd014aea",
+      "selected_checkpoint_new_timesteps": 10000,
+      "source_cumulative_timesteps": 30000,
+      "selected_cumulative_timesteps": 40000,
+      "comparison": {
+        "comparator": "static_heuristic",
+        "completion_margin_percentage_points": 0.04157658406786169,
+        "reward_margin": 0.5895528005389679,
+        "checks": {
+          "completion_margin": false,
+          "crash_rate": true,
+          "reward": true
+        },
+        "passes_this_cohort": false
+      },
+      "metrics": {
+        "admission_efficiency_pct": 79.32600887386437,
+        "algorithm": "diffusion",
+        "charged_step_rate_pct": 0.0,
+        "config": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_q005_bc03_adapt20k_seed42/.hydra/config.yaml",
+        "crash_episode_rate_pct": 0.0,
+        "drop_rate_pct": 25.253617162813903,
+        "episodes": 50,
+        "gpu_vnf_on_gpu_pct": 99.81512782590323,
+        "low_battery_uav_step_rate_pct": 0.0,
+        "mean_abs_mobility_action": 0.1645693289488554,
+        "mean_completed_sfc_latency": 2.5037865310148906,
+        "mean_energy_j_per_step": 771.6004707799301,
+        "mean_episode_reward": 454.4519553871079,
+        "mean_episode_steps": 40.0,
+        "mean_harvested_j_per_episode": 0.0,
+        "mean_placement_affinity": 0.9992712988923743,
+        "minimum_battery_ratio": 0.6926505804430824,
+        "mobility_source": "default",
+        "model": "/root/autodl-tmp/UAV-SFC-balanced-82bf265/server_runs/balanced_search_20261021/balanced_q005_bc03/BALANCED_Q005_BC03_final_model.zip",
+        "near_zero_mobility_component_pct": 19.125,
+        "pick_rate_pct": 78.71278895725928,
+        "placement_affinity_bias": 0.0,
+        "placement_distance_bias": 0.0,
+        "placement_load_bias": 0.0,
+        "placement_source": "default",
+        "reward_drop": -0.05,
+        "reward_success": 3.0,
+        "rms_mobility_action": 0.20577921368423752,
+        "success_rate_pct": 62.43971395310162,
+        "timeout_rate_pct": 12.306668884084484
+      }
+    }
+  ]
+}

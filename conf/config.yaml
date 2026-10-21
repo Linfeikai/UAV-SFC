@@ -22,6 +22,9 @@ heuristic_reuse_input: DIFFUSION
 warmup_steps: 20000 # 预热阶段的步数，期间完全使用启发式策略来填充经验回放缓冲区
 warmup_random_fraction: 0.2
 warmup_mobility_source: heuristic
+# Full-state simulator teacher is opt-in and used only during training warmup.
+warmup_expert_policy: smart
+warmup_teacher_candidates: 8
 # Replay warmup trains the critic but does not directly teach the actor.
 bc_pretrain_steps: 0
 bc_batch_size: 256

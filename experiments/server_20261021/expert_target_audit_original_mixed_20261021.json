@@ -1,0 +1,17 @@
+{
+  "status": "complete",
+  "seed_start": 12000,
+  "episodes": 20,
+  "config": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q001_50k_seed42/.hydra/config.yaml",
+  "model": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_search_20261021/stationary_q001/STATIONARY_Q001_final_model.zip",
+  "environment_changed": false,
+  "training_performed": false,
+  "random_fraction": 0.2,
+  "valid_placements": 13511,
+  "raw_top_choice_changed_by_environment": 0,
+  "changed_percentage": 0.0,
+  "bc_batch_size": 256,
+  "raw_target_bc_loss": 0.3065171539783478,
+  "executed_target_bc_loss": 0.3065171539783478,
+  "elapsed_seconds": 2.0532055818475783
+}

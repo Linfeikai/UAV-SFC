@@ -1,0 +1,25 @@
+{
+  "config_sha256": "767fbce53936c014b2d957ee058305406b8a4ad11d49dc3e97aef419e1e52e54",
+  "episodes": 50,
+  "seed_start": 13100,
+  "screening_only": true,
+  "training_performed": false,
+  "policies": {
+    "static_heuristic": {
+      "success_rate_pct": 53.077927294637476,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 649.0705041570682,
+      "mean_energy_j_per_step": 765.8990117699717,
+      "mean_episode_steps": 40.0,
+      "elapsed_seconds": 3.59717275807634
+    },
+    "lookahead_teacher": {
+      "success_rate_pct": 54.428600120506125,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 670.0019155092261,
+      "mean_energy_j_per_step": 764.3311778851878,
+      "mean_episode_steps": 40.0,
+      "elapsed_seconds": 59.02778567420319
+    }
+  }
+}

@@ -436,6 +436,11 @@ def main(cfg: DictConfig):
     expert_observations = []
     expert_actions = []
     warmup_mobility_source = str(cfg.get("warmup_mobility_source", "heuristic"))
+    warmup_expert_policy = str(cfg.get("warmup_expert_policy", "smart"))
+    if warmup_expert_policy not in {"smart", "lookahead"}:
+        raise ValueError("warmup_expert_policy must be smart or lookahead")
+    if warmup_expert_policy == "lookahead" and warmup_mobility_source != "brake":
+        raise ValueError("lookahead teacher requires braking mobility")
     if warmup_mobility_source not in {"heuristic", "brake"}:
         raise ValueError("warmup_mobility_source must be heuristic or brake")
     if warmup_steps > 0 and not hasattr(model, "replay_buffer"):
@@ -467,7 +472,13 @@ def main(cfg: DictConfig):
                     "warmup_random_fraction", 0.2
                 )
                 if use_expert:
-                    action = smart_heuristic_policy(temp_env)
+                    if warmup_expert_policy == "lookahead":
+                        from algos.lookahead_teacher import lookahead_expert_action
+                        action = lookahead_expert_action(
+                            temp_env, int(cfg.get("warmup_teacher_candidates", 8))
+                        )
+                    else:
+                        action = smart_heuristic_policy(temp_env)
                     if warmup_mobility_source == "brake":
                         # Observation-equivalent velocity feedback: a teacher
                         # for training, never an override during policy inference.
