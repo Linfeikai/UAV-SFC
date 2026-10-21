@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "observed_at": "2026-10-21T03:33:59.087493+00:00",
+  "pipeline": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_pipeline_20261021",
+  "source_commit": "c5bd80a",
+  "status": "running",
+  "controller": {
+    "expected": {
+      "pid": 2429,
+      "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+      "start_ticks": 283289502,
+      "state": "S",
+      "command": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "scripts/motion_search.py",
+        "--plan",
+        "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/resume_plan.json"
+      ],
+      "alive": true,
+      "required_arg": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/resume_plan.json"
+    },
+    "actual": {
+      "pid": 2429,
+      "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+      "start_ticks": 283289502,
+      "state": "S",
+      "command": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "scripts/motion_search.py",
+        "--plan",
+        "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/resume_plan.json"
+      ],
+      "alive": true
+    },
+    "identity_matches": true
+  },
+  "active_process": null,
+  "watcher": {
+    "observed_at": "2026-10-21T03:33:58.184158+00:00",
+    "controller_alive": true,
+    "status": "running",
+    "terminal": null,
+    "watcher": {
+      "pid": 2688,
+      "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+      "start_ticks": 283318704,
+      "state": "R",
+      "command": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/scripts/experiment_monitor.py",
+        "watch",
+        "--config",
+        "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_monitor_20261021/config.json"
+      ],
+      "alive": true
+    },
+    "last_event_sequence": 0,
+    "live_now": true
+  },
+  "events": [],
+  "runs": [
+    {
+      "algorithm": "DIFFUSION_STATIONARY_RESUME",
+      "run_id": "f3b92a71",
+      "status": "training",
+      "url": "https://wandb.ai/SACtest/diffusion_rl/runs/f3b92a71",
+      "last_logged_timesteps": 8320
+    }
+  ],
+  "error": null
+}

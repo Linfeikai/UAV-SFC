@@ -1,0 +1,23 @@
+{
+  "status": "continue_stationary_for_30000_steps",
+  "evidence_sha256": "19f7ddf3c1e0940fe8275fae85199373c78bf366c4de448d81eddc53cf674d66",
+  "remote_evidence": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/status.json",
+  "comparison": {
+    "comparator": "static_full_state_zero_mobility",
+    "completion_margin_percentage_points": -0.3967855349070888,
+    "reward_margin": -5.1306030526105815,
+    "checks": {
+      "completion_margin": false,
+      "crash_rate": true,
+      "reward": false
+    },
+    "passes_this_cohort": false,
+    "final_generalization_and_training_replicates_still_required": true
+  },
+  "rationale": "The 50-episode learned policy has zero crashes, full 40-step survival, a 0.397 percentage-point completion deficit and a 5.13 reward deficit against the strongest static comparator. These results support the previously bounded 30k continuation while preserving the source checkpoint and fixed environment. The policy has not met the performance goal.",
+  "final_generalization_required": true,
+  "training_seeds_to_replicate": [
+    43,
+    44
+  ]
+}

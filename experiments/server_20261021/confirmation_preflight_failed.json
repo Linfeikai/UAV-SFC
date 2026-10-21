@@ -1,0 +1,25 @@
+{
+  "status": "failed",
+  "started": "2026-10-21T03:20:36.634416+00:00",
+  "source_commit": "c5bd80a",
+  "pid": 2030,
+  "boot_id": "494d6a2b-d9b8-4599-baf5-bafcdbefdeb2",
+  "start_ticks": "283238548",
+  "seed_start": 4000,
+  "seed_end": 4049,
+  "episodes_per_policy": 50,
+  "jobs": [],
+  "active_process": null,
+  "elapsed_seconds": 0.08652429608628154,
+  "model_sha256": "2106f25d3f9b2cfcbdb775d2549fb3322aae72ea45ed322adb0053c083720fa2",
+  "config_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+  "source_hashes": {
+    "main.py": "2602025b07fd886cac98be61757b3f75e59f67564aeb1d4bff6e314bd8591cda",
+    "test/cpu_model_eval.py": "81e057c66663b82129cce6e3c1d68707704ec0a4c93bcc7d6f11c9c9ee3711ad",
+    "core/sfc_env.py": "ee61436bf6244bc702247058a5e92414f57fb306fcb10730a3db9d817c03f380",
+    "algos/diffusion_sac_agent.py": "305a4409f66c72fcf74d157f811539d3b12f8c3a75e9a8beedd9fa45986c165e",
+    "conf/env/heterogeneous_hybrid.yaml": "e51fc69a0b09051e200326e16c76378de07b88583c72a46a3333accfb6b2ae3b"
+  },
+  "finished": "2026-10-21T03:20:36.720911+00:00",
+  "error": ""
+}

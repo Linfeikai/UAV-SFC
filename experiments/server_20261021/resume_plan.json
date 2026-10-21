@@ -1,0 +1,77 @@
+{
+  "status": "launched",
+  "reason": "The 50-episode learned policy has zero crashes, full 40-step survival, a 0.397 percentage-point completion deficit and a 5.13 reward deficit against the strongest static comparator. These results support the previously bounded 30k continuation while preserving the source checkpoint and fixed environment. The policy has not met the performance goal.",
+  "source_commit": "c5bd80a",
+  "root": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+  "source_checkpoint": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+  "source_checkpoint_sha256": "2106f25d3f9b2cfcbdb775d2549fb3322aae72ea45ed322adb0053c083720fa2",
+  "output": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_pipeline_20261021",
+  "steps": 30000,
+  "eval_episodes": 50,
+  "validation_seed": 5000,
+  "validation_episodes": 10,
+  "confirmation_seed": 6000,
+  "max_parallel": 1,
+  "runs": [
+    {
+      "variant": "DIFFUSION_STATIONARY_RESUME",
+      "base_algorithm": "DIFFUSION",
+      "root": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+      "folder": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_50k_seed42",
+      "run_id": "f3b92a71",
+      "url": "https://wandb.ai/SACtest/diffusion_rl/runs/f3b92a71",
+      "source_commit": "c5bd80a",
+      "overrides": [
+        "hybrid=relational_stationary",
+        "env=heterogeneous_hybrid",
+        "seed=42",
+        "n_envs=8",
+        "total_timesteps=30000",
+        "warmup_steps=5000",
+        "bc_pretrain_steps=0",
+        "checkpoint_freq=5000",
+        "validation_freq=5000",
+        "validation_episodes=5",
+        "validation_seed=5000",
+        "resume_model=/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+        "use_wandb=true",
+        "run_heuristic_baseline=false",
+        "exp_name=stationary_resume_50k_seed42",
+        "hydra.run.dir=/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_50k_seed42"
+      ],
+      "run_id_status": "started"
+    }
+  ],
+  "additional_confirmation_command": [
+    "/root/autodl-tmp/uav-sfc-venv/bin/python",
+    "-m",
+    "test.cpu_model_eval",
+    "heuristic",
+    "--config",
+    "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_50k_seed42",
+    "--device",
+    "cuda",
+    "--seed",
+    "6000",
+    "--episodes",
+    "50",
+    "--mobility-source",
+    "zero"
+  ],
+  "notes": [
+    "Execution order: restore writable SSH, verify the selected checkpoint, complete seeds 4000-4049 for the learned policy and all three baselines, record a decision, then launch continuation only if justified.",
+    "Pipeline first selects among the final and in-training best-validation checkpoints on validation seeds 5000-5009, then confirms the selected model on seeds 6000-6049.",
+    "After the pipeline, evaluate this static full-state heuristic zero-mobility comparator on exactly seeds 6000-6049; it is a baseline, not a learned policy.",
+    "Verify the resumed model archive and all metrics before acknowledging new monitor events. Restart the watcher and retarget the read-only endpoint to the new pipeline only after writable SSH is available.",
+    "The pretraining decision is recorded and the replacement server has writable access. Scientific training code is isolated at c5bd80a; the original e150a29 source and checkpoint remain intact.",
+    "SB3 learn resets num_timesteps by default: resumed archive will report 30000 new timesteps, in addition to 20000 from the source model. A fresh 5000-step replay warmup is additional environment interaction, not restored replay.",
+    "Launch via continuation_controller.py, which verifies the pretraining evidence and runs the static comparator after motion_search completes."
+  ],
+  "launch_gate": {
+    "status": "pretraining_confirmation_complete",
+    "decision_record": "experiments/server_20261021/continuation_decision.json",
+    "evidence_sha256": "19f7ddf3c1e0940fe8275fae85199373c78bf366c4de448d81eddc53cf674d66"
+  },
+  "control_output": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_resume_control_20261021",
+  "decision_file": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/continuation_decision.json"
+}

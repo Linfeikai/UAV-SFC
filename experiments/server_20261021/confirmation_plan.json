@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "kind": "manual_evaluation_manifest",
+  "status": "prepared_not_launched",
+  "source_commit": "c5bd80a",
+  "source_checkpoint": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+  "source_checkpoint_sha256": "2106f25d3f9b2cfcbdb775d2549fb3322aae72ea45ed322adb0053c083720fa2",
+  "config": "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_20k_seed42/.hydra/config.yaml",
+  "output": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02",
+  "seed_start": 4000,
+  "seed_end": 4049,
+  "episodes_per_policy": 50,
+  "max_parallel": 1,
+  "environment": {
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "jobs": [
+    {
+      "label": "stationary_selected",
+      "argv": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "-m",
+        "test.cpu_model_eval",
+        "diffusion",
+        "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_search_20261020/diffusion_stationary/DIFFUSION_STATIONARY_final_model.zip",
+        "--config",
+        "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_20k_seed42/.hydra/config.yaml",
+        "--device",
+        "cuda",
+        "--seed",
+        "4000",
+        "--episodes",
+        "50",
+        "--mobility-source",
+        "default"
+      ],
+      "cwd": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+      "stdout": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/stationary_selected.json",
+      "stderr": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/stationary_selected.stderr.log"
+    },
+    {
+      "label": "static_full_state_zero_mobility",
+      "argv": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "-m",
+        "test.cpu_model_eval",
+        "heuristic",
+        "--config",
+        "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_20k_seed42/.hydra/config.yaml",
+        "--device",
+        "cuda",
+        "--seed",
+        "4000",
+        "--episodes",
+        "50",
+        "--mobility-source",
+        "zero"
+      ],
+      "cwd": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+      "stdout": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/static_full_state_zero_mobility.json",
+      "stderr": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/static_full_state_zero_mobility.stderr.log"
+    },
+    {
+      "label": "full_state_heuristic",
+      "argv": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "-m",
+        "test.cpu_model_eval",
+        "heuristic",
+        "--config",
+        "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_20k_seed42/.hydra/config.yaml",
+        "--device",
+        "cuda",
+        "--seed",
+        "4000",
+        "--episodes",
+        "50",
+        "--mobility-source",
+        "default"
+      ],
+      "cwd": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+      "stdout": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/full_state_heuristic.json",
+      "stderr": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/full_state_heuristic.stderr.log"
+    },
+    {
+      "label": "observation_heuristic",
+      "argv": [
+        "/root/autodl-tmp/uav-sfc-venv/bin/python",
+        "-m",
+        "test.cpu_model_eval",
+        "obs_heuristic",
+        "--config",
+        "/root/autodl-tmp/UAV-SFC-motion-e150a29/server_runs/stationary_20k_seed42/.hydra/config.yaml",
+        "--device",
+        "cuda",
+        "--seed",
+        "4000",
+        "--episodes",
+        "50",
+        "--mobility-source",
+        "default"
+      ],
+      "cwd": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+      "stdout": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/observation_heuristic.json",
+      "stderr": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a/server_runs/stationary_confirmation_20261021_02/observation_heuristic.stderr.log"
+    }
+  ],
+  "decision_gate": {
+    "status": "pending",
+    "training_requires_recorded_decision": true,
+    "comparator": "highest success_rate_pct among the three baselines on seeds 4000-4049",
+    "success_margin_percentage_points": 0.5,
+    "maximum_crash_episode_rate_pct": 5.0,
+    "reward": "at least the mean_episode_reward of that comparator",
+    "required_metrics": [
+      "success_rate_pct",
+      "crash_episode_rate_pct",
+      "mean_episode_reward",
+      "mean_energy_j_per_step",
+      "mean_episode_steps",
+      "mean_completed_sfc_latency"
+    ]
+  },
+  "notes": [
+    "This is an argv/output manifest, not an input accepted by scripts/motion_search.py.",
+    "Restore writable SSH first. Verify source checkpoint SHA256, source revision, and unchanged environment/reward/physics configuration before evaluation.",
+    "Create an unused output directory; preserve each evaluator JSON and stderr separately, record elapsed time, and stop on a failed or invalid evaluation.",
+    "Complete all four 50-episode evaluations and record their comparison before deciding whether to release the 30k continuation candidate.",
+    "The learned policy keeps default mobility. Zero mobility applies only to the static heuristic baseline.",
+    "Seeds 4000-4049 support the continuation decision. Reserve seeds 6000-6049 for post-training confirmation, and use new seeds for the final generalization check.",
+    "No training, monitor retargeting, or remote write has been performed by preparing this manifest.",
+    "2026-10-21: Writable access restored on the replacement endpoint; existing checkpoint verified, and source code isolated at c5bd80a. Original e150a29 source is preserved.",
+    "Initial preflight stopped before any evaluator because git archive exported CRLF bytes while expected hashes came from LF git blobs. Archive bytes have now been verified against normalized git blobs; both hash sets are recorded and the failed attempt is preserved."
+  ],
+  "original_source_commit": "e150a29",
+  "source_root": "/root/autodl-tmp/UAV-SFC-eval-c5bd80a",
+  "source_hashes": {
+    "main.py": "2602025b07fd886cac98be61757b3f75e59f67564aeb1d4bff6e314bd8591cda",
+    "test/cpu_model_eval.py": "81e057c66663b82129cce6e3c1d68707704ec0a4c93bcc7d6f11c9c9ee3711ad",
+    "core/sfc_env.py": "ee61436bf6244bc702247058a5e92414f57fb306fcb10730a3db9d817c03f380",
+    "algos/diffusion_sac_agent.py": "305a4409f66c72fcf74d157f811539d3b12f8c3a75e9a8beedd9fa45986c165e",
+    "conf/env/heterogeneous_hybrid.yaml": "e51fc69a0b09051e200326e16c76378de07b88583c72a46a3333accfb6b2ae3b"
+  },
+  "source_git_blob_sha256": {
+    "main.py": "c104a2cd5750a394da0265d357bc65eadf7cd8635413ebee6f3cdb57cb769510",
+    "test/cpu_model_eval.py": "ba4943030329c646028c4b83d8d5fa180a32808fd9e744628bac5e27a773e203",
+    "core/sfc_env.py": "71b5a91b5e34ec842b9f12b4eec53b5b11ad100d04cc06d6a980130027312a57",
+    "algos/diffusion_sac_agent.py": "58562bd2384895715816e79cd775c97f105788f6b6abf3ad8badd6cf30bdfb19",
+    "conf/env/heterogeneous_hybrid.yaml": "ca3bbe4c4955c14b4e55c8b184a75fdab6640584eb5537acfb085bac1a40ac52"
+  },
+  "source_archive_sha256": "2e661ade513bed3ee83e749ae381bb9b7a3a6b9344caf59bbd10926f3881b5bf"
+}
