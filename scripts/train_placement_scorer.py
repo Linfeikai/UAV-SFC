@@ -41,7 +41,8 @@ def main():
     started = time.monotonic()
     state = dict(status='training', started=datetime.now(timezone.utc).isoformat(),
                  pid=os.getpid(), run_id=args.run_id, arguments=vars(args),
-                 training_from_scratch=True, learned_component='whole-deployment scorer',
+                 training_from_scratch=True, diagnostic_only=args.confirmation_episodes < 50,
+                 learned_component='whole-deployment scorer',
                  motion_component='explicit shared velocity-braking controller', history=[])
     def save():
         state['elapsed_seconds'] = time.monotonic() - started
@@ -125,7 +126,9 @@ def main():
         save()
     policy.margin = selected[1]
     policy.save(output / 'selected_model.pt', training_seed=args.seed, run_id=args.run_id,
-                selected_epoch=state['selected_epoch'], loss=args.loss)
+                selected_epoch=state['selected_epoch'], loss=args.loss,
+                training_from_scratch=True, training_epochs=args.epochs,
+                config_sha256=REFERENCE_SHA, data_sha256=hashlib.sha256(Path(args.data).read_bytes()).hexdigest())
     state.update(status='confirming', selected_margin=policy.margin,
                  model_sha256=hashlib.sha256((output / 'selected_model.pt').read_bytes()).hexdigest(),
                  data_sha256=hashlib.sha256(Path(args.data).read_bytes()).hexdigest(),
@@ -145,7 +148,7 @@ def main():
     baseline_name = max(['static_heuristic', 'heuristic', 'obs_heuristic'],
                         key=lambda name: state['confirmation'][name]['success_rate_pct'])
     baseline = state['confirmation'][baseline_name]
-    checks = dict(completion_margin=learned['success_rate_pct'] - baseline['success_rate_pct'] >= .5,
+    checks = dict(confirmation_size=args.confirmation_episodes >= 50, completion_margin=learned['success_rate_pct'] - baseline['success_rate_pct'] >= .5,
                   crash_rate=learned['crash_episode_rate_pct'] <= 5,
                   reward=learned['mean_episode_reward'] >= baseline['mean_episode_reward'])
     state.update(status='complete', finished=datetime.now(timezone.utc).isoformat(),

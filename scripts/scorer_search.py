@@ -44,6 +44,8 @@ def main():
     baseline = screen['policies']['0']['success_rate_pct']
     assert screen['policies']['simulator_oracle']['success_rate_pct'] >= baseline + .5
     assert max(screen['policies'][str(i)]['success_rate_pct'] for i in range(8)) <= baseline + .01
+    assert plan['confirmation_episodes'] >= 50 and plan['validation_episodes'] >= 10
+    assert plan['data_episodes'] >= 50
     assert len(plan['runs']) == plan['max_parallel'] == 2
     assert {r['loss'] for r in plan['runs']} == {'regression', 'ranking'}
     assert not out.exists() and out.resolve().is_relative_to(root.resolve())
