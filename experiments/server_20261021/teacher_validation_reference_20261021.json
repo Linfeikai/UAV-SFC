@@ -1,0 +1,151 @@
+{
+  "config_sha256": "767fbce53936c014b2d957ee058305406b8a4ad11d49dc3e97aef419e1e52e54",
+  "episodes": 10,
+  "seed_start": 14000,
+  "screening_only": true,
+  "training_performed": false,
+  "policies": {
+    "static_heuristic": {
+      "success_rate_pct": 54.60576677723909,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 658.2705228281014,
+      "mean_energy_j_per_step": 769.6131532730557,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.487051797201605,
+      "elapsed_seconds": 0.7405777187086642,
+      "episode_records": [
+        {
+          "seed": 14000,
+          "completed": 219,
+          "available": 378,
+          "reward": 679.6593825340271
+        },
+        {
+          "seed": 14001,
+          "completed": 220,
+          "available": 388,
+          "reward": 681.1359741210936
+        },
+        {
+          "seed": 14002,
+          "completed": 210,
+          "available": 384,
+          "reward": 647.039252281189
+        },
+        {
+          "seed": 14003,
+          "completed": 198,
+          "available": 378,
+          "reward": 604.3602444648744
+        },
+        {
+          "seed": 14004,
+          "completed": 217,
+          "available": 397,
+          "reward": 668.3418607711791
+        },
+        {
+          "seed": 14005,
+          "completed": 209,
+          "available": 403,
+          "reward": 638.8049448013306
+        },
+        {
+          "seed": 14006,
+          "completed": 219,
+          "available": 375,
+          "reward": 677.4761129379273
+        },
+        {
+          "seed": 14007,
+          "completed": 202,
+          "available": 369,
+          "reward": 614.3774584293365
+        },
+        {
+          "seed": 14008,
+          "completed": 221,
+          "available": 428,
+          "reward": 678.8022777557372
+        },
+        {
+          "seed": 14009,
+          "completed": 225,
+          "available": 419,
+          "reward": 692.7077201843261
+        }
+      ]
+    },
+    "lookahead_teacher": {
+      "success_rate_pct": 55.830569022709874,
+      "crash_episode_rate_pct": 0.0,
+      "mean_episode_reward": 677.2041159343711,
+      "mean_energy_j_per_step": 768.0628597190683,
+      "mean_episode_steps": 40.0,
+      "mean_completed_sfc_latency": 2.478194566097347,
+      "elapsed_seconds": 11.816357731353492,
+      "episode_records": [
+        {
+          "seed": 14000,
+          "completed": 223,
+          "available": 378,
+          "reward": 694.994355392456
+        },
+        {
+          "seed": 14001,
+          "completed": 221,
+          "available": 388,
+          "reward": 686.869648170471
+        },
+        {
+          "seed": 14002,
+          "completed": 217,
+          "available": 384,
+          "reward": 673.8291435241699
+        },
+        {
+          "seed": 14003,
+          "completed": 207,
+          "available": 378,
+          "reward": 638.7442838668824
+        },
+        {
+          "seed": 14004,
+          "completed": 222,
+          "available": 397,
+          "reward": 687.4110536575316
+        },
+        {
+          "seed": 14005,
+          "completed": 215,
+          "available": 403,
+          "reward": 661.723927307129
+        },
+        {
+          "seed": 14006,
+          "completed": 224,
+          "available": 375,
+          "reward": 696.3607898712158
+        },
+        {
+          "seed": 14007,
+          "completed": 208,
+          "available": 369,
+          "reward": 639.1154509544372
+        },
+        {
+          "seed": 14008,
+          "completed": 223,
+          "available": 428,
+          "reward": 687.5412628173827
+        },
+        {
+          "seed": 14009,
+          "completed": 228,
+          "available": 419,
+          "reward": 705.4512437820434
+        }
+      ]
+    }
+  }
+}

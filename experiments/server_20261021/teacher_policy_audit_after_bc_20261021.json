@@ -1,0 +1,60 @@
+{
+  "status": "complete",
+  "diagnostic_only": true,
+  "independent_policy_episode_evaluation": false,
+  "episodes": 10,
+  "seed_start": 16000,
+  "steps": 400,
+  "models": {
+    "source": {
+      "model": "/root/autodl-tmp/UAV-SFC-q-8981a9b/server_runs/stationary_q_search_20261021/stationary_q001/STATIONARY_Q001_final_model.zip",
+      "model_sha256": "305a91138c1afa83c330840c68e5e61720d0dc4df25ed56be3d3ab4a16ab2d91",
+      "valid_placements": 8788,
+      "matching_placements": 5225,
+      "teacher_changes": 3075,
+      "matched_teacher_changes": 605,
+      "reward_regret_sum": 262.7972984313965,
+      "placement_reward_regret_sum": 261.9416723251343,
+      "mobility_magnitude_sum": 36.651742696762085,
+      "placement_agreement_pct": 59.45607646791079,
+      "changed_placement_agreement_pct": 19.67479674796748,
+      "mean_current_slot_reward_regret": 0.6569932460784912,
+      "mean_placement_slot_reward_regret": 0.6548541808128356,
+      "mean_abs_mobility_action": 0.09162935674190521
+    },
+    "smart_after_bc": {
+      "model": "/root/autodl-tmp/UAV-SFC-teacher-af7549f/server_runs/teacher_smart_adapt20k_seed42/after_bc_model.zip",
+      "model_sha256": "6806e6de03b66142aa89a552e3b030a15f9ef3692afb6be44db96fd3719e0065",
+      "valid_placements": 8788,
+      "matching_placements": 5257,
+      "teacher_changes": 3075,
+      "matched_teacher_changes": 551,
+      "reward_regret_sum": 258.4789328575134,
+      "placement_reward_regret_sum": 258.4825210571289,
+      "mobility_magnitude_sum": 11.84882777929306,
+      "placement_agreement_pct": 59.8202093764224,
+      "changed_placement_agreement_pct": 17.91869918699187,
+      "mean_current_slot_reward_regret": 0.6461973321437836,
+      "mean_placement_slot_reward_regret": 0.6462063026428223,
+      "mean_abs_mobility_action": 0.02962206944823265
+    },
+    "lookahead_after_bc": {
+      "model": "/root/autodl-tmp/UAV-SFC-teacher-af7549f/server_runs/teacher_lookahead_adapt20k_seed42/after_bc_model.zip",
+      "model_sha256": "9f3a3cfbe5cdd02585451cfac29ce4fc9f7a264106a64c6d55410538503a1bc6",
+      "valid_placements": 8788,
+      "matching_placements": 6596,
+      "teacher_changes": 3075,
+      "matched_teacher_changes": 2214,
+      "reward_regret_sum": 270.19663858413696,
+      "placement_reward_regret_sum": 269.73831701278687,
+      "mobility_magnitude_sum": 13.088510483503342,
+      "placement_agreement_pct": 75.05689576695494,
+      "changed_placement_agreement_pct": 72.0,
+      "mean_current_slot_reward_regret": 0.6754915964603424,
+      "mean_placement_slot_reward_regret": 0.6743457925319671,
+      "mean_abs_mobility_action": 0.03272127620875835
+    }
+  },
+  "config_sha256": "767fbce53936c014b2d957ee058305406b8a4ad11d49dc3e97aef419e1e52e54",
+  "elapsed_seconds": 71.82081865612417
+}
