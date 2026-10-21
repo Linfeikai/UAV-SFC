@@ -1,0 +1,105 @@
+{
+  "equivalent_reference_config_sha256": "2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7",
+  "full_flat_config": {
+    "ALPHA0": 1e-05,
+    "APPLY_MOBILITY_MASK_IN_ENV": false,
+    "ARRIVAL_PROB": 0.5,
+    "BANDWIDTH_HZ": 2000000.0,
+    "BATTERY_CAPACITY": 30000.0,
+    "CHG_K_SCALE": 0.5,
+    "CHG_RADIUS": 150.0,
+    "DATA_SIZE_RANGES": {
+      "0": [
+        500000.0,
+        4000000
+      ],
+      "1": [
+        200000.0,
+        1000000
+      ],
+      "2": [
+        40000,
+        400000
+      ]
+    },
+    "DEADLINE_FACTOR": 1.2,
+    "DT_FLY": 1.0,
+    "EXPOSE_PLACEMENT_CONTEXT": true,
+    "GPU_VNFS": [
+      "AnomalyDetection",
+      "Encoder",
+      "Encryption",
+      "FeatureExtraction",
+      "IntrusionDetection",
+      "ObjectDetection"
+    ],
+    "GRID_RES": 3,
+    "GROUND_HEIGHT": 500.0,
+    "GROUND_WIDTH": 500.0,
+    "K": 6,
+    "LOW_BATTERY_SHAPING_THRESHOLD": 0.3,
+    "M": 12,
+    "MAX_STEPS": 40,
+    "MAX_VNF_LEN": 4,
+    "NODE_TYPE_DISTRIBUTION": {
+      "0": 0.4,
+      "1": 0.4,
+      "2": 0.2
+    },
+    "NOISE_POWER": 1e-13,
+    "NON_GPU_SLOWDOWN": 4.0,
+    "NUM_UAVS": 4,
+    "NUM_UES": 20,
+    "PLACEMENT_AFFINITY_BIAS": 0.0,
+    "PLACEMENT_DISTANCE_BIAS": 0.0,
+    "PLACEMENT_LOAD_BIAS": 0.0,
+    "P_UPLINK": 0.2,
+    "RECORD_DEPLOYMENT": false,
+    "RWD_COLLISION": -0.25,
+    "RWD_CRASH": -50.0,
+    "RWD_DROP": -0.05,
+    "RWD_LATENCY_BONUS": 0.25,
+    "RWD_LINK_BROKEN": -0.5,
+    "RWD_LOW_BATTERY_DISTANCE": 0.0,
+    "RWD_SUCCESS": 3.0,
+    "RWD_TIMEOUT": -0.5,
+    "SECTOR_CENTER": [
+      [
+        125,
+        125
+      ],
+      [
+        375,
+        125
+      ],
+      [
+        125,
+        375
+      ],
+      [
+        375,
+        375
+      ]
+    ],
+    "TIME_SLOT_DURATION": 8.0,
+    "UAV_CHARGING_POWER": 1000.0,
+    "UAV_CPU_FREQ": 500000000.0,
+    "UAV_FULL_LOAD_POWER": 20.0,
+    "UAV_HEIGHT": 100.0,
+    "UAV_MAX_SPEED": 20.0,
+    "UAV_MIN_SAFE_DISTANCE": 10.0,
+    "UAV_P_TX_CROSS": 0.5,
+    "UAV_TYPES": [
+      "gpu",
+      "general",
+      "gpu",
+      "general"
+    ],
+    "USE_HARD_CAP": false,
+    "W_CHARGE": 0.1,
+    "W_ENERGY": 0.5
+  },
+  "full_flat_config_sha256": "a42ef3b57124730a2d3a16ad3fd92350ab1a6cd771589ca5d5c9e003ec1537ad",
+  "original_reference_config_sha256": "2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5",
+  "provenance": "teacher_launch_audit.json full environment equality against original20k config, config hash rechecked after download"
+}

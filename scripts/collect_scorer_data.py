@@ -14,6 +14,21 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 REFERENCE_SHA = '2ae61b7f8d7f225b283a9a343739f7139388c32d12f86382815d88c9dc7f43f5'
+EQUIVALENT_REFERENCE_SHA = '2d38365544d73b9f65b4c6b027f55d2414e9573e5b1ec1ecdb3989effb5a8fb7'
+
+
+def load_fixed_reference(path):
+    """Accept only the original YAML or its audited physical-equivalent backup."""
+    actual_sha = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    assert actual_sha in {REFERENCE_SHA, EQUIVALENT_REFERENCE_SHA}
+    from test.cpu_model_eval import load_env_config
+    cfg = load_env_config(str(path))
+    manifest_path = Path(__file__).resolve().parents[1] / 'experiments/server_20261021/fixed_hybrid_environment_manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    normalized = json.loads(json.dumps(cfg, sort_keys=True,
+                                      default=lambda value: sorted(value) if isinstance(value, set) else value))
+    assert normalized == manifest['full_flat_config'], 'Original physical setting changed'
+    return cfg, actual_sha
 
 
 def collect_chunk(job):
@@ -63,9 +78,7 @@ def main():
     parser.add_argument('--workers', type=int, default=8)
     args = parser.parse_args()
     config = Path(args.config)
-    assert hashlib.sha256(config.read_bytes()).hexdigest() == REFERENCE_SHA
-    from test.cpu_model_eval import load_env_config
-    cfg = load_env_config(str(config))
+    cfg, config_sha = load_fixed_reference(config)
     assert cfg['ARRIVAL_PROB'] == .5 and cfg['UAV_CPU_FREQ'] == 500000000.
     output = Path(args.output)
     assert not output.exists() and args.episodes > 0 and 1 <= args.workers <= 8
@@ -78,7 +91,7 @@ def main():
     features, rewards, completed, episode_ids = [np.concatenate([r[i] for r in results]) for i in range(4)]
     assert np.isfinite(features).all() and np.isfinite(rewards).all()
     np.savez_compressed(output, features=features, rewards=rewards, completed=completed, episode_ids=episode_ids)
-    metadata = dict(status='complete', pid=os.getpid(), config_sha256=REFERENCE_SHA,
+    metadata = dict(status='complete', pid=os.getpid(), config_sha256=config_sha, original_reference_sha256=REFERENCE_SHA,
                     original_environment=True, episodes=args.episodes, seed_start=args.seed,
                     actual_environment_interactions=len(features), counterfactual_simulator_steps=len(features) * 8,
                     feature_shape=list(features.shape), elapsed_seconds=time.monotonic() - started,

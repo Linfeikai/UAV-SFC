@@ -26,21 +26,23 @@ def main():
     import torch
     from algos.placement_scorer import ScoredDeploymentPolicy
     from scripts.experiment_monitor import atomic_json
-    from scripts.collect_scorer_data import REFERENCE_SHA
-    from test.cpu_model_eval import evaluate, load_env_config
+    from scripts.collect_scorer_data import REFERENCE_SHA, load_fixed_reference
+    from test.cpu_model_eval import evaluate
     sha = lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
     assert sha(args.model) == args.expected_sha256
-    assert sha(args.config) == REFERENCE_SHA
+    config, actual_config_sha = load_fixed_reference(args.config)
     torch.set_num_threads(1)
     policy = ScoredDeploymentPolicy.load(args.model)
-    config = load_env_config(args.config)
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     state = dict(status='evaluating', started=datetime.now(timezone.utc).isoformat(),
                  run_id=args.run_id, model=args.model, model_sha256=args.expected_sha256,
                  scientific_source_commit=(Path(args.root) / 'SOURCE_COMMIT').read_text().strip(),
-                 evaluator_sha256=sha(__file__), config_sha256=REFERENCE_SHA,
+                 evaluator_sha256=sha(__file__), config_sha256=actual_config_sha,
+                 original_reference_sha256=REFERENCE_SHA,
+                 runtime=dict(python=sys.version.split()[0], torch=torch.__version__,
+                              numpy=__import__('numpy').__version__, execution_host=__import__('platform').node()),
                  seed_start=args.seed, episodes=args.episodes, evaluations={})
     def save():
         state['elapsed_seconds'] = time.monotonic() - started
